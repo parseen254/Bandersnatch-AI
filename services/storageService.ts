@@ -1,3 +1,4 @@
+
 import { StoryNode, PsychProfile, MetaMemory, AppConfig, StoryLine } from '../types';
 
 const DB_NAME = 'BandersnatchDB';
@@ -11,6 +12,7 @@ const STORES = {
 class BandersnatchStorage {
   private db: IDBDatabase | null = null;
   private readyPromise: Promise<void>;
+  private urlCache: Map<string, string> = new Map();
 
   constructor() {
     this.readyPromise = this.init();
@@ -74,8 +76,8 @@ class BandersnatchStorage {
 
   async saveNode(node: StoryNode) {
     await this.waitForReady();
-    // Don't store blob URLs in DB
-    const { imageUrl, audioUrl, ...nodeData } = node; 
+    // Don't store blob URLs in DB, strictly strip them
+    const { imageUrl, audioUrl, prefetched, ...nodeData } = node; 
     return this.put(STORES.NODES, nodeData);
   }
 
@@ -120,11 +122,43 @@ class BandersnatchStorage {
   }
 
   async getAssetUrl(id: string): Promise<string | null> {
+    if (this.urlCache.has(id)) {
+      return this.urlCache.get(id)!;
+    }
+
     const blob = await this.getAssetBlob(id);
     if (blob) {
-      return URL.createObjectURL(blob);
+      const url = URL.createObjectURL(blob);
+      this.urlCache.set(id, url);
+      return url;
     }
     return null;
+  }
+
+  revokeAllUrls() {
+    this.urlCache.forEach(url => URL.revokeObjectURL(url));
+    this.urlCache.clear();
+  }
+
+  // --- Export/Import Helpers ---
+
+  private blobToBase64(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = reader.result as string;
+        // Strip data:mime/type;base64, prefix for cleaner storage if needed, 
+        // but keeping it is safer for reconstruction
+        resolve(base64); 
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  private async base64ToBlob(base64: string): Promise<Blob> {
+    const res = await fetch(base64);
+    return await res.blob();
   }
 
   // --- Export/Import ---
@@ -135,12 +169,33 @@ class BandersnatchStorage {
     const profile = await this.getSystemData<PsychProfile>('psychProfile');
     const memory = await this.getSystemData<MetaMemory>('metaMemory') || { deathCount: 0, endingsReached: [], narrativeThreads: [] };
 
+    // Collect all assets referenced by nodes
+    const assetsExport: Record<string, { mimeType: string; data: string }> = {};
+    
+    for (const node of nodes) {
+      if (node.imageAssetId) {
+        const blob = await this.getAssetBlob(node.imageAssetId);
+        if (blob) {
+          const b64 = await this.blobToBase64(blob);
+          assetsExport[node.imageAssetId] = { mimeType: blob.type, data: b64 };
+        }
+      }
+      if (node.audioAssetId) {
+        const blob = await this.getAssetBlob(node.audioAssetId);
+        if (blob) {
+          const b64 = await this.blobToBase64(blob);
+          assetsExport[node.audioAssetId] = { mimeType: blob.type, data: b64 };
+        }
+      }
+    }
+
     return {
       version: 1,
       timestamp: Date.now(),
       profile,
       memory,
-      nodes
+      nodes,
+      assets: assetsExport
     };
   }
 
@@ -151,11 +206,23 @@ class BandersnatchStorage {
     if (data.profile) await this.saveSystemData('psychProfile', data.profile);
     await this.saveSystemData('metaMemory', data.memory);
 
-    const tx = this.db!.transaction([STORES.NODES], 'readwrite');
-    const store = tx.objectStore(STORES.NODES);
+    const tx = this.db!.transaction([STORES.NODES, STORES.ASSETS], 'readwrite');
     
+    // Restore Nodes
+    const nodeStore = tx.objectStore(STORES.NODES);
     for (const node of data.nodes) {
-      store.put(node);
+      nodeStore.put(node);
+    }
+
+    // Restore Assets
+    if (data.assets) {
+      const assetStore = tx.objectStore(STORES.ASSETS);
+      for (const [id, assetData] of Object.entries(data.assets)) {
+        // If old format didn't have mimeType in wrapper, fallback
+        const mime = assetData.mimeType || 'application/octet-stream'; 
+        const blob = await this.base64ToBlob(assetData.data);
+        assetStore.put({ id, blob, mimeType: mime });
+      }
     }
     
     return new Promise<void>((resolve, reject) => {
@@ -166,6 +233,8 @@ class BandersnatchStorage {
 
   async clearAll() {
     await this.waitForReady();
+    this.revokeAllUrls(); // Clean up memory
+    
     const tx = this.db!.transaction([STORES.NODES, STORES.ASSETS, STORES.SYSTEM], 'readwrite');
     tx.objectStore(STORES.NODES).clear();
     tx.objectStore(STORES.ASSETS).clear();

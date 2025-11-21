@@ -1,3 +1,4 @@
+
 export enum GameStage {
   BOOT = 'BOOT',
   BIOS = 'BIOS',
@@ -29,6 +30,7 @@ export interface StoryLine {
   profile: PsychProfile | null;
   memory: MetaMemory;
   nodes: StoryNode[]; // Flattened tree
+  assets: Record<string, { mimeType: string; data: string }>; // Base64 encoded assets for portability
 }
 
 export interface AssetRef {

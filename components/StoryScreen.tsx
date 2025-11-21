@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { AppConfig, PsychProfile, StoryNode, GameStage } from '../types';
 import { getStoryNode, generateSceneImage, generateSpeech, updateMetaMemory, decodePCM, prefetchNode } from '../services/geminiService';
@@ -13,26 +14,30 @@ interface StoryScreenProps {
 export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, initialStage, setGlobalStage }) => {
   const [node, setNode] = useState<StoryNode | null>(null);
   const [displayedNarrative, setDisplayedNarrative] = useState("");
+  const [isTyping, setIsTyping] = useState(false);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [context, setContext] = useState("The subject wakes up in a dimly lit room with a terminal.");
-  const [timeLeft, setTimeLeft] = useState<number | null>(null);
-  const [crackActive, setCrackActive] = useState(false);
+  const [crackState, setCrackState] = useState<'none' | 'low' | 'high'>('none');
   const [showTimeline, setShowTimeline] = useState(false);
   const [timelineNodes, setTimelineNodes] = useState<StoryNode[]>([]);
+  const [instability, setInstability] = useState(0); // 0 to 10
 
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const autoProgressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const crackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const randomCrackLoopRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const typeWriterRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Cleanup
   useEffect(() => {
     return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-      if (autoProgressRef.current) clearTimeout(autoProgressRef.current);
       if (crackTimerRef.current) clearTimeout(crackTimerRef.current);
-      if (audioContextRef.current) audioContextRef.current.close();
+      if (randomCrackLoopRef.current) clearTimeout(randomCrackLoopRef.current);
+      if (typeWriterRef.current) clearInterval(typeWriterRef.current);
+      if (audioContextRef.current) {
+          audioContextRef.current.close();
+      }
     };
   }, []);
 
@@ -44,36 +49,86 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
           await audioContextRef.current.resume();
       }
       
+      // Stop previous audio if any
+      if (audioSourceRef.current) {
+          try {
+              audioSourceRef.current.stop();
+          } catch (e) { /* ignore */ }
+      }
+
       const buffer = decodePCM(data, audioContextRef.current);
       const source = audioContextRef.current.createBufferSource();
       source.buffer = buffer;
       source.connect(audioContextRef.current.destination);
+      audioSourceRef.current = source;
       source.start(0);
+      return buffer.duration;
   };
 
-  // --- Random Crack Logic ---
+  // --- Instability & Random Crack Logic ---
   
-  const triggerCrack = (duration: number) => {
-      setCrackActive(true);
+  const triggerCrack = (durationBase: number, intensityOverride?: 'low' | 'high') => {
+      // Randomize duration slightly
+      const duration = durationBase + (Math.random() * 400 - 200);
+      
+      let intensity: 'low' | 'high' = 'low';
+      if (intensityOverride) {
+          intensity = intensityOverride;
+      } else {
+          // Higher instability = higher chance of high intensity
+          intensity = (Math.random() < (instability / 15)) ? 'high' : 'low';
+      }
+
+      setCrackState(intensity);
       if (crackTimerRef.current) clearTimeout(crackTimerRef.current);
       crackTimerRef.current = setTimeout(() => {
-          setCrackActive(false);
-          scheduleRandomCrack();
+          setCrackState('none');
       }, duration);
   };
 
-  const scheduleRandomCrack = () => {
-      const nextDelay = Math.random() * 20000 + 10000; // 10s to 30s interval
-      if (crackTimerRef.current) clearTimeout(crackTimerRef.current);
-      crackTimerRef.current = setTimeout(() => {
-          const duration = Math.random() * 800 + 200; 
-          triggerCrack(duration);
-      }, nextDelay);
-  };
-
+  // Analyze narrative to set instability
   useEffect(() => {
-      scheduleRandomCrack();
-  }, []);
+      if (node?.narrative) {
+          const text = node.narrative.toLowerCase();
+          const stressWords = ['kill', 'die', 'death', 'blood', 'run', 'panic', 'scream', 'fight', 'terror', 'error', 'glitch', 'corrupt', 'fail'];
+          let stressCount = 0;
+          stressWords.forEach(w => {
+              if (text.includes(w)) stressCount++;
+          });
+          
+          // Decay instability slightly over time, but boost with stress words
+          setInstability(prev => {
+              const decay = Math.max(0, prev - 1);
+              return Math.min(10, decay + (stressCount * 2));
+          });
+      }
+  }, [node]);
+
+  // Continuous Random Loop
+  useEffect(() => {
+      const loop = () => {
+          // Base chance 5%, increases with instability
+          const triggerChance = 0.05 + (instability * 0.08);
+          
+          if (Math.random() < triggerChance) {
+              const duration = 200 + (instability * 100);
+              triggerCrack(duration);
+          }
+
+          // Schedule next check: shorter interval if unstable
+          const baseInterval = 10000;
+          const interval = Math.max(2000, baseInterval - (instability * 800));
+          const jitter = Math.random() * 3000;
+          
+          randomCrackLoopRef.current = setTimeout(loop, interval + jitter);
+      };
+
+      randomCrackLoopRef.current = setTimeout(loop, 5000);
+      return () => {
+          if (randomCrackLoopRef.current) clearTimeout(randomCrackLoopRef.current);
+      };
+  }, [instability]);
+
 
   // --- Timeline Load ---
 
@@ -85,67 +140,42 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
     }
   }, [showTimeline, node]);
 
-  // --- Typewriter Effect ---
-
-  useEffect(() => {
-    if (node?.narrative) {
+  const startTypewriter = (text: string, durationSec?: number) => {
+      if (typeWriterRef.current) clearInterval(typeWriterRef.current);
       setDisplayedNarrative("");
-      let i = 0;
-      const interval = setInterval(() => {
-        setDisplayedNarrative(node.narrative.substring(0, i + 1));
-        i++;
-        if (i >= node.narrative.length) clearInterval(interval);
-      }, 25);
-      return () => clearInterval(interval);
-    }
-  }, [node]);
+      setIsTyping(true);
+      
+      let charIndex = 0;
+      // If audio duration exists, calculate ms per char to sync end times
+      // We add a small buffer to ensure text finishes slightly before or with audio
+      const totalMs = durationSec ? (durationSec * 1000) : 0;
+      const msPerChar = (durationSec && text.length > 0) 
+          ? Math.max(20, totalMs / text.length) 
+          : 30;
 
-  // --- Timer & Auto-Progress ---
-
-  useEffect(() => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    if (autoProgressRef.current) clearTimeout(autoProgressRef.current);
-    setTimeLeft(null);
-
-    if (!node || loading) return;
-
-    if (!node.autoProgress && node.choices.length > 1) {
-        setTimeLeft(15);
-        timerRef.current = setInterval(() => {
-            setTimeLeft(prev => {
-                if (prev === null) return 15;
-                if (prev <= 1) {
-                    clearInterval(timerRef.current!);
-                    handleTimeout();
-                    return 0;
-                }
-                return prev - 1;
-            });
-        }, 1000);
-    }
-
-    if (node.autoProgress) {
-        const readTime = Math.max(3000, node.narrative.length * 60);
-        autoProgressRef.current = setTimeout(() => {
-            if (node.choices[0]) handleChoice(node.choices[0].text, node.choices[0].nextId);
-        }, readTime);
-    }
-  }, [node, loading]);
-
-  const handleTimeout = () => {
-      if (!node || !node.choices.length) return;
-      triggerCrack(2500); 
-      const randomIdx = Math.floor(Math.random() * node.choices.length);
-      const choice = node.choices[randomIdx];
-      handleChoice(choice.text, choice.nextId);
+      typeWriterRef.current = setInterval(() => {
+          setDisplayedNarrative(text.substring(0, charIndex + 1));
+          charIndex++;
+          if (charIndex >= text.length) {
+              if (typeWriterRef.current) clearInterval(typeWriterRef.current);
+              setIsTyping(false);
+          }
+      }, msPerChar);
   };
 
   const loadNode = async (targetNodeId: string | null, userChoiceText: string | null, isBacktrack = false) => {
     setLoading(true);
     setDisplayedNarrative(""); 
+    setIsTyping(false);
     setImageUrl(null); // Clear image immediately for tension
     
+    // Stop audio if playing
+    if (audioSourceRef.current) {
+        try { audioSourceRef.current.stop(); } catch(e) {}
+    }
+
     try {
+       // Narrative Transition Crack
        triggerCrack(400);
 
        let newNode: StoryNode;
@@ -157,7 +187,6 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
           newNode = stored;
           setContext(newNode.narrative); 
           
-          // Attempt to load audio from storage
           if (newNode.audioAssetId) {
               const blob = await storageService.getAssetBlob(newNode.audioAssetId);
               if (blob) {
@@ -166,16 +195,13 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
               }
           }
        } else {
-          // 1. Generate Text and Audio in Parallel (Blocking UI until both ready)
           const currentContext = context + (userChoiceText ? ` User chose: "${userChoiceText}".` : "");
           
-          // Start Story Gen
           const storyPromise = getStoryNode(config.textModel, currentContext, psychProfile, node?.id || null, userChoiceText || undefined);
           
           newNode = await storyPromise;
           setContext(prev => prev + " " + newNode.narrative);
           
-          // Start Audio Gen (Dependent on Story Text)
           if (config.audioEnabled) {
              audioData = await generateSpeech(config.ttsModel, newNode.narrative);
              if (audioData) {
@@ -183,35 +209,38 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
                  const assetId = crypto.randomUUID();
                  await storageService.saveAsset(assetId, blob, 'audio/pcm');
                  newNode.audioAssetId = assetId;
-                 await storageService.saveNode(newNode); // Update DB with audio link
+                 await storageService.saveNode(newNode);
              }
           }
        }
 
-       // 2. Unlock UI
        setNode(newNode);
+       
+       let audioDuration = 0;
        if (audioData && config.audioEnabled) {
-           playAudio(audioData);
+           audioDuration = await playAudio(audioData);
        }
+       
+       // Start typewriter AFTER node is set, using audio duration for sync
+       startTypewriter(newNode.narrative, audioDuration);
+       
        setLoading(false); 
 
        if (newNode.gameState === 'won' || newNode.gameState === 'lost') {
+          triggerCrack(3000, 'high');
           setGlobalStage(GameStage.ENDING);
           return;
        }
 
-       // 3. Generate Image (Non-Blocking / Background)
        if (config.visualsEnabled && newNode.visualPrompt) {
-         // Check storage first (backtrack)
          if (newNode.imageAssetId) {
              const url = await storageService.getAssetUrl(newNode.imageAssetId);
              setImageUrl(url);
          } else {
-             // Generate fresh
+             // Generate new image
              generateSceneImage(config.imageModel, newNode.visualPrompt, config.imageSize).then(async (result) => {
                  if (result) {
                      setImageUrl(result.url);
-                     // Update DB with new image asset ID
                      newNode.imageAssetId = result.assetId;
                      await storageService.saveNode(newNode);
                  }
@@ -219,7 +248,6 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
          }
        }
 
-       // 4. Prefetch next choices
        if (!newNode.autoProgress && newNode.choices.length > 0 && !isBacktrack) {
           newNode.choices.slice(0, 2).forEach(c => {
              prefetchNode(config.textModel, context + " " + newNode.narrative, psychProfile, c.text, newNode.id);
@@ -276,7 +304,7 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
 
   return (
     <div className="h-screen w-full flex flex-col bg-[#050505] relative overflow-hidden z-10">
-      <div className={`crack-overlay ${crackActive ? 'crack-active' : ''}`}></div>
+      <div className={`crack-overlay ${crackState === 'low' ? 'crack-active' : ''} ${crackState === 'high' ? 'crack-active-high' : ''}`}></div>
 
       <div className="absolute inset-0 z-0 overflow-hidden">
           {imageUrl && (
@@ -296,38 +324,41 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
          </div>
 
          <div className="w-full max-w-5xl mx-auto flex flex-col gap-8 mb-12">
-             <div className="bg-black/60 backdrop-blur-md p-8 border border-white/10 rounded-sm">
+             <div className="bg-black/60 backdrop-blur-md p-8 border border-white/10 rounded-sm min-h-[160px] flex flex-col justify-end">
                  <p className="text-2xl md:text-3xl text-white leading-relaxed font-medium drop-shadow-lg font-display">
                      {displayedNarrative}
+                     {isTyping && <span className="inline-block w-3 h-8 bg-white align-middle ml-1 animate-blink">▋</span>}
                  </p>
              </div>
 
-             {!node?.autoProgress ? (
-                 <div className="flex flex-col gap-2">
-                     {timeLeft !== null && (
-                         <div className="w-full h-2 bg-white/10 mb-4 overflow-hidden border border-white/20 rounded-full">
-                             <div className="h-full bg-white transition-all duration-1000 ease-linear shadow-[0_0_10px_white]" style={{ width: `${(timeLeft / 15) * 100}%` }}></div>
-                         </div>
+             <div className="flex flex-col gap-2">
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                     {node?.choices.map((choice, idx) => (
+                         <button 
+                            key={idx} 
+                            onClick={() => handleChoice(choice.text, choice.nextId)}
+                            className={`group relative py-6 px-8 bg-white/5 border border-white/20 transition-all duration-200 overflow-hidden ${
+                              node.choices.length === 1 ? "col-span-1 md:col-span-2 text-center" : ""
+                            } ${
+                              isTyping 
+                                ? "opacity-50 cursor-wait" 
+                                : "hover:bg-white/90 hover:border-white cursor-pointer"
+                            }`}
+                            disabled={isTyping}
+                         >
+                             <div className="absolute bottom-0 left-0 h-1 w-full bg-white scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-300"></div>
+                             <span className={`text-xl md:text-2xl text-white font-bold tracking-wide font-display uppercase ${!isTyping && "group-hover:text-black"}`}>
+                                {node.choices.length === 1 && choice.text === "Continue" ? "[ CONTINUE ]" : choice.text}
+                             </span>
+                         </button>
+                     ))}
+                     {node?.choices.length === 0 && !isTyping && (
+                       <div className="col-span-1 md:col-span-2 text-center">
+                          <p className="text-white/50 font-mono tracking-widest uppercase">TERMINAL STATE REACHED</p>
+                       </div>
                      )}
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                         {node?.choices.map((choice, idx) => (
-                             <button 
-                                key={idx} 
-                                onClick={() => handleChoice(choice.text, choice.nextId)}
-                                className="group relative py-6 px-8 bg-white/5 hover:bg-white/90 border border-white/20 hover:border-white transition-all duration-200 overflow-hidden"
-                                disabled={displayedNarrative.length < (node?.narrative.length || 0)}
-                             >
-                                 <div className="absolute bottom-0 left-0 h-1 w-full bg-white scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-300"></div>
-                                 <span className="text-xl md:text-2xl text-white group-hover:text-black font-bold tracking-wide font-display uppercase">{choice.text}</span>
-                             </button>
-                         ))}
-                     </div>
                  </div>
-             ) : (
-                 <div className="flex justify-center opacity-70">
-                     <span className="animate-pulse text-white/70 font-mono text-sm tracking-[0.2em] border-b border-white/30 pb-1">[ CONTINUING SEQUENCE ]</span>
-                 </div>
-             )}
+             </div>
          </div>
       </div>
 
@@ -337,4 +368,23 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
                 <h2 className="text-white font-mono text-2xl tracking-widest">NARRATIVE THREAD</h2>
                 <button onClick={() => setShowTimeline(false)} className="text-white/50 hover:text-white font-mono">[ CLOSE ]</button>
             </div>
-            <div className="flex-1 overflow-x-auto flex
+            <div className="flex-1 overflow-x-auto flex items-center p-12 gap-8">
+                {timelineNodes.map((n, i) => (
+                    <div key={n.id} className="flex items-center shrink-0">
+                        <div className="flex flex-col gap-2 w-64 group cursor-pointer" onClick={() => jumpToNode(n.id)}>
+                            <div className={`w-full aspect-video border ${n.id === node?.id ? 'border-accent bg-accent/10' : 'border-white/20 bg-white/5 group-hover:border-white'}`}>
+                                <div className="w-full h-full flex items-center justify-center text-white/20 text-xs font-mono">
+                                    {n.gameState === 'lost' ? 'DEAD END' : 'NODE ' + i}
+                                </div>
+                            </div>
+                            <p className="text-white/70 text-xs font-mono line-clamp-2">{n.narrative}</p>
+                        </div>
+                        {i < timelineNodes.length - 1 && <div className="w-12 h-px bg-white/20"></div>}
+                    </div>
+                ))}
+            </div>
+        </div>
+      )}
+    </div>
+  );
+};

@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type, Modality, HarmCategory, HarmBlockThreshold } from "@google/genai";
 import { PsychProfile, StoryNode, MetaMemory, StoryLine } from '../types';
 import { storageService } from './storageService';
@@ -9,6 +10,8 @@ const prefetchCache: Record<string, StoryNode> = {};
 
 export const initializeGemini = async (apiKey: string) => {
   genAI = new GoogleGenAI({ apiKey });
+  // Only save if different to avoid redundant writes logic in storage service, 
+  // but standard put is fine for this scale.
   await storageService.saveSystemData('apiKey', apiKey);
 };
 
@@ -64,6 +67,7 @@ export const decodePCM = (data: Uint8Array, ctx: AudioContext): AudioBuffer => {
 
 export const clearAllData = async () => {
   await storageService.clearAll();
+  genAI = null; // RESET IN-MEMORY INSTANCE
 };
 
 export const getStoredProfile = async (): Promise<PsychProfile | null> => {
@@ -342,8 +346,12 @@ export const generateSceneImage = async (model: string, prompt: string, size: '1
         const base64 = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
         const blob = await (await fetch(base64)).blob();
         const assetId = crypto.randomUUID();
+        
+        // CRITICAL FIX: Save to storageService and retrieve cached URL to avoid memory leaks
         await storageService.saveAsset(assetId, blob, part.inlineData.mimeType);
-        return { url: URL.createObjectURL(blob), assetId };
+        const cachedUrl = await storageService.getAssetUrl(assetId);
+        
+        return { url: cachedUrl!, assetId };
       }
     }
     return null;

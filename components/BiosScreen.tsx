@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from 'react';
 import { Button } from './Button';
 import { Input } from './Input';
@@ -86,7 +87,13 @@ export const BiosScreen: React.FC<BiosScreenProps> = ({
 
   return (
     <div className="h-screen w-full flex flex-col bg-[#0a0a0a] relative overflow-hidden z-10">
-      <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_center,_transparent_0%,_#000000_120%)] z-0 pointer-events-none" />
+      {/* 3D Grid Background */}
+      <div className="retro-grid-container">
+        <div className="retro-grid"></div>
+      </div>
+      
+      {/* Vignette to fade edges */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle,transparent_20%,#000000_95%)] pointer-events-none z-0"></div>
 
       <div className="relative z-20 flex flex-col items-center pt-16 md:pt-24 mb-8">
         <p className="text-white/30 font-mono text-xs tracking-[0.3em] uppercase mb-2">System v2.5 Ready</p>
@@ -107,7 +114,7 @@ export const BiosScreen: React.FC<BiosScreenProps> = ({
           
           {hasValidSession && (
             <div className="group cursor-pointer" onClick={onResume}>
-              <div className="border border-white/10 bg-white/5 p-6 relative overflow-hidden transition-all duration-300 hover:bg-white/10 hover:border-white/20">
+              <div className="border border-white/10 bg-black/80 backdrop-blur-sm p-6 relative overflow-hidden transition-all duration-300 hover:bg-white/10 hover:border-white/20">
                 <div className="absolute top-4 bottom-4 left-0 w-1 bg-accent shadow-[0_0_10px_#57e668]"></div>
                 <div className="pl-4">
                   <p className="text-accent text-xs font-mono tracking-widest mb-1">SAVE_DATA_FOUND</p>
@@ -119,7 +126,7 @@ export const BiosScreen: React.FC<BiosScreenProps> = ({
           )}
 
           <div className="flex flex-col gap-4 mt-4">
-             <div className="border border-white/10 bg-black/40 p-6">
+             <div className="border border-white/10 bg-black/80 backdrop-blur-sm p-6">
                 {!hasValidSession && (
                   <div className="mb-6">
                     <Input 
@@ -228,12 +235,18 @@ export const BiosScreen: React.FC<BiosScreenProps> = ({
                              </div>
                         </div>
                      )}
+                     
+                     {modalData.type === 'IMPORT' && (
+                         <div className="mt-4 p-3 border border-danger/30 bg-danger/5 text-danger text-xs">
+                             WARNING: IMPORTING THIS FILE WILL OVERWRITE CURRENT SESSION DATA.
+                         </div>
+                     )}
                  </div>
 
                  <div className="flex gap-4">
                      <Button fullWidth variant="ghost" onClick={() => setModalData(null)}>CANCEL</Button>
                      <Button fullWidth variant="primary" onClick={confirmAction}>
-                         {modalData.type === 'EXPORT' ? 'DOWNLOAD' : 'RESTORE'}
+                         {modalData.type === 'EXPORT' ? 'DOWNLOAD' : 'CONFIRM RESTORE'}
                      </Button>
                  </div>
              </div>
