@@ -1,24 +1,27 @@
-import { GoogleGenAI, Type, Modality, Schema, HarmCategory, HarmBlockThreshold } from "@google/genai";
-import { PsychProfile, StoryNode, MetaMemory } from '../types';
+import { GoogleGenAI, Type, Modality, HarmCategory, HarmBlockThreshold } from "@google/genai";
+import { PsychProfile, StoryNode, MetaMemory, StoryLine } from '../types';
+import { storageService } from './storageService';
 
 let genAI: GoogleGenAI | null = null;
 
-export const initializeGemini = (apiKey: string) => {
+// Cache for runtime prefetching only (not persistence)
+const prefetchCache: Record<string, StoryNode> = {};
+
+export const initializeGemini = async (apiKey: string) => {
   genAI = new GoogleGenAI({ apiKey });
+  await storageService.saveSystemData('apiKey', apiKey);
 };
 
-export const getGeminiInstance = () => {
-  if (!genAI) {
-    const storedKey = localStorage.getItem('BANDERSNATCH_API_KEY');
-    if (storedKey) {
-      initializeGemini(storedKey);
-    }
+export const getGeminiInstance = async () => {
+  if (genAI) return genAI;
+
+  const storedKey = await storageService.getSystemData<string>('apiKey');
+  if (storedKey) {
+    genAI = new GoogleGenAI({ apiKey: storedKey });
+    return genAI;
   }
   
-  if (!genAI) {
-    throw new Error("Gemini AI not initialized. Please provide an API Key.");
-  }
-  return genAI;
+  throw new Error("Gemini AI not initialized. Please provide an API Key.");
 };
 
 const SAFETY_SETTINGS = [
@@ -30,9 +33,7 @@ const SAFETY_SETTINGS = [
 
 const cleanJson = (text: string) => {
   try {
-    // Remove markdown code blocks if present
     let cleaned = text.replace(/```json\s*/g, '').replace(/```\s*$/g, '');
-    // Sometimes the model adds extra text before or after
     const firstBrace = cleaned.indexOf('{');
     const lastBrace = cleaned.lastIndexOf('}');
     if (firstBrace !== -1 && lastBrace !== -1) {
@@ -49,38 +50,24 @@ const cleanJson = (text: string) => {
 export const decodePCM = (data: Uint8Array, ctx: AudioContext): AudioBuffer => {
   const inputSampleRate = 24000;
   const numChannels = 1;
-  
   const dataInt16 = new Int16Array(data.buffer);
   const frameCount = dataInt16.length;
   const buffer = ctx.createBuffer(numChannels, frameCount, inputSampleRate);
-  
   const channelData = buffer.getChannelData(0);
   for (let i = 0; i < frameCount; i++) {
-    // Convert 16-bit int to float [-1.0, 1.0]
     channelData[i] = dataInt16[i] / 32768.0;
   }
-  
   return buffer;
 };
 
-// --- Persistence & Helpers ---
+// --- Persistence Helpers ---
 
-export const clearAllData = () => {
-  localStorage.removeItem('BANDERSNATCH_API_KEY');
-  localStorage.removeItem('BANDERSNATCH_PSYCH_PROFILE');
-  localStorage.removeItem('BANDERSNATCH_META_MEMORY');
-  // Note: window.location.reload() removed to prevent React state crash.
-  // State must be cleared by the calling component.
+export const clearAllData = async () => {
+  await storageService.clearAll();
 };
 
-export const getStoredProfile = (): PsychProfile | null => {
-  try {
-    const stored = localStorage.getItem('BANDERSNATCH_PSYCH_PROFILE');
-    if (stored) return JSON.parse(stored);
-  } catch (e) {
-    return null;
-  }
-  return null;
+export const getStoredProfile = async (): Promise<PsychProfile | null> => {
+  return await storageService.getSystemData<PsychProfile>('psychProfile');
 };
 
 export const isProfileFresh = (profile: PsychProfile | null): boolean => {
@@ -93,21 +80,57 @@ export const isProfileFresh = (profile: PsychProfile | null): boolean => {
 
 // --- Meta Memory ---
 
-export const getMetaMemory = (): MetaMemory => {
-  try {
-    const stored = localStorage.getItem('BANDERSNATCH_META_MEMORY');
-    if (stored) return JSON.parse(stored);
-  } catch (e) {
-    console.warn("Failed to parse meta memory, resetting.");
-  }
-  return { deathCount: 0, endingsReached: [], narrativeThreads: [] };
+export const getMetaMemory = async (): Promise<MetaMemory> => {
+  const mem = await storageService.getSystemData<MetaMemory>('metaMemory');
+  return mem || { deathCount: 0, endingsReached: [], narrativeThreads: [] };
 };
 
-export const updateMetaMemory = (update: Partial<MetaMemory>) => {
-  const current = getMetaMemory();
+export const updateMetaMemory = async (update: Partial<MetaMemory>) => {
+  const current = await getMetaMemory();
   const newMemory = { ...current, ...update };
-  localStorage.setItem('BANDERSNATCH_META_MEMORY', JSON.stringify(newMemory));
+  await storageService.saveSystemData('metaMemory', newMemory);
   return newMemory;
+};
+
+// --- Import / Export (Granular) ---
+
+export const getStoryLineData = async (): Promise<StoryLine> => {
+  return await storageService.exportStoryLine();
+};
+
+export const downloadStoryLine = (storyLine: StoryLine) => {
+  const blob = new Blob([JSON.stringify(storyLine)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `BANDERSNATCH_SAVE_${Date.now()}.bndr`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+export const parseStoryLineFile = async (file: File): Promise<StoryLine> => {
+  const text = await file.text();
+  return JSON.parse(text) as StoryLine;
+};
+
+export const restoreStoryLine = async (data: StoryLine) => {
+  await storageService.importStoryLine(data);
+};
+
+export const exportStoryLineFile = async (): Promise<void> => {
+  const data = await getStoryLineData();
+  downloadStoryLine(data);
+};
+
+export const importStoryLineFile = async (file: File): Promise<boolean> => {
+  try {
+    const data = await parseStoryLineFile(file);
+    await restoreStoryLine(data);
+    return true;
+  } catch (e) {
+    console.error("Import failed", e);
+    return false;
+  }
 };
 
 // --- Psych Eval Chat ---
@@ -117,12 +140,8 @@ export const generateDirectorResponse = async (
   history: { role: string; parts: { text: string }[] }[],
   lastUserMessage: string
 ) => {
-  const ai = getGeminiInstance();
-  
-  const chatHistory = history.map(h => ({
-    role: h.role,
-    parts: h.parts
-  }));
+  const ai = await getGeminiInstance();
+  const chatHistory = history.map(h => ({ role: h.role, parts: h.parts }));
 
   const chat = ai.chats.create({
     model: model,
@@ -139,18 +158,11 @@ export const generateDirectorResponse = async (
 };
 
 export const generatePsychProfile = async (model: string, conversationText: string): Promise<PsychProfile> => {
-  const ai = getGeminiInstance();
+  const ai = await getGeminiInstance();
   
-  const prompt = `Analyze this conversation and generate a psychological profile for the user based on their susceptibility to manipulation, paranoia, and violence.
-  Conversation:
-  ${conversationText}
-  
-  Output JSON with:
-  - paranoia (0-100)
-  - compliance (0-100)
-  - aggression (0-100)
-  - traits (array of 3 strings like "Delusional", "Submissive", "Volatile")
-  `;
+  const prompt = `Analyze this conversation and generate a psychological profile.
+  Conversation: ${conversationText}
+  Output JSON: paranoia (0-100), compliance (0-100), aggression (0-100), traits (3 strings).`;
 
   const response = await ai.models.generateContent({
     model: model,
@@ -164,10 +176,7 @@ export const generatePsychProfile = async (model: string, conversationText: stri
           paranoia: { type: Type.INTEGER },
           compliance: { type: Type.INTEGER },
           aggression: { type: Type.INTEGER },
-          traits: { 
-            type: Type.ARRAY,
-            items: { type: Type.STRING }
-          }
+          traits: { type: Type.ARRAY, items: { type: Type.STRING } }
         },
         required: ["paranoia", "compliance", "aggression", "traits"]
       }
@@ -178,51 +187,71 @@ export const generatePsychProfile = async (model: string, conversationText: stri
   if (!text) throw new Error("Failed to generate profile");
   const profile = JSON.parse(cleanJson(text)) as PsychProfile;
   
-  // Add timestamp and save
   const profileWithTime = { ...profile, timestamp: Date.now() };
-  localStorage.setItem('BANDERSNATCH_PSYCH_PROFILE', JSON.stringify(profileWithTime));
+  await storageService.saveSystemData('psychProfile', profileWithTime);
   
   return profileWithTime;
 };
 
 // --- Story Generation ---
 
+export const prefetchNode = async (model: string, context: string, psychProfile: PsychProfile | null, choiceText: string, parentId: string) => {
+    try {
+        const nextContext = context + ` User chose: "${choiceText}".`;
+        const node = await generateStoryNode(model, nextContext, psychProfile, parentId, true);
+        prefetchCache[choiceText] = node;
+    } catch (e) {
+        console.warn("Prefetch failed", e);
+    }
+};
+
+export const getStoryNode = async (
+    model: string, 
+    context: string, 
+    psychProfile: PsychProfile | null,
+    parentId: string | null,
+    choiceText?: string
+): Promise<StoryNode> => {
+    if (choiceText && prefetchCache[choiceText]) {
+        const cached = prefetchCache[choiceText];
+        delete prefetchCache[choiceText];
+        await storageService.saveNode(cached);
+        return cached;
+    }
+    return generateStoryNode(model, context, psychProfile, parentId);
+};
+
 export const generateStoryNode = async (
   model: string,
   context: string,
-  psychProfile: PsychProfile | null
+  psychProfile: PsychProfile | null,
+  parentId: string | null,
+  isPrefetch = false
 ): Promise<StoryNode> => {
-  const ai = getGeminiInstance();
-  const metaMemory = getMetaMemory();
+  const ai = await getGeminiInstance();
+  const metaMemory = await getMetaMemory();
 
   const profileContext = psychProfile 
-    ? `SUBJECT PROFILE: Paranoia ${psychProfile.paranoia}%, Compliance ${psychProfile.compliance}%, Aggression ${psychProfile.aggression}%. Traits: ${psychProfile.traits.join(', ')}.`
-    : "SUBJECT PROFILE: Unknown.";
-
-  const metaContext = `
-  META_MEMORY (Previous Attempts):
-  - Deaths: ${metaMemory.deathCount}
-  - Endings Found: ${metaMemory.endingsReached.join(', ')}
-  `;
+    ? `SUBJECT: P:${psychProfile.paranoia} C:${psychProfile.compliance} A:${psychProfile.aggression} Traits:${psychProfile.traits.join(',')}`
+    : "SUBJECT: Unknown";
 
   const prompt = `
-  You are the engine of "BANDERSNATCH", an interactive text adventure from 1984 that is secretly a psychological test.
-  
-  ${metaContext}
+  ENGINE: BANDERSNATCH (1984 Interactive Fiction).
   ${profileContext}
+  META_MEMORY: Deaths:${metaMemory.deathCount}, Endings:${metaMemory.endingsReached.join(',')}.
   
   INSTRUCTIONS:
-  - Narrate in SECOND PERSON ("You...").
-  - Style: 1980s Cyberpunk / Psychological Horror / Meta-Fiction.
-  - Break the fourth wall subtly. If the user has high paranoia, feed it.
-  - If the user has died many times, mock them.
-  - Keep narration SHORT and PUNCHY (max 80 words).
-  - Provide 2 distinct choices. One should often feel like a trap or a test of their profile traits.
-  - visualPrompt: Generate a prompt for a dark, 80s retro-futuristic, VHS-style glitch art image of the scene.
+  - Second Person ("You...").
+  - 80s Cyberpunk/Psychological Horror.
+  - Easter Eggs: White Bear, Tuckersoft, Pax, Glyph.
+  - Break fourth wall based on Paranoia.
+  - Short (max 60 words).
+  - 60% chance Linear (autoProgress: true, 1 choice "CONTINUE").
+  - 40% chance Decision (autoProgress: false, 2 choices).
   
-  PREVIOUS CONTEXT: ${context}
+  CONTEXT: ${context}
   
-  Generate valid JSON:
+  Output JSON: id, narrative, visualPrompt, gameState(playing/won/lost), autoProgress, choices[{text, nextId}].
   `;
 
   const response = await ai.models.generateContent({
@@ -238,6 +267,7 @@ export const generateStoryNode = async (
           narrative: { type: Type.STRING },
           visualPrompt: { type: Type.STRING },
           gameState: { type: Type.STRING, enum: ["playing", "won", "lost"] },
+          autoProgress: { type: Type.BOOLEAN },
           choices: {
             type: Type.ARRAY,
             items: {
@@ -256,45 +286,69 @@ export const generateStoryNode = async (
 
   const text = response.text;
   if (!text) throw new Error("Failed to generate story node");
-  const node = JSON.parse(cleanJson(text)) as StoryNode;
+  const rawNode = JSON.parse(cleanJson(text));
   
-  // Auto-update death count if lost
-  if (node.gameState === 'lost') {
-    updateMetaMemory({ deathCount: metaMemory.deathCount + 1 });
+  const node: StoryNode = {
+      ...rawNode,
+      parentId: parentId,
+      timestamp: Date.now()
+  };
+  
+  node.prefetched = isPrefetch;
+
+  if (node.gameState === 'lost' && !isPrefetch) {
+    await updateMetaMemory({ deathCount: metaMemory.deathCount + 1 });
+  }
+
+  if (!isPrefetch) {
+      await storageService.saveNode(node);
   }
 
   return node;
 };
 
+// --- Binary Asset Management ---
+
+export const fetchAndStoreAsset = async (url: string, type: 'image' | 'audio'): Promise<string> => {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    const id = crypto.randomUUID();
+    await storageService.saveAsset(id, blob, blob.type);
+    return id;
+};
+
+export const getAssetUrl = async (id: string): Promise<string | null> => {
+    return await storageService.getAssetUrl(id);
+};
+
 // --- Image Generation ---
 
-export const generateSceneImage = async (model: string, prompt: string, size: '1K' | '2K' | '4K' = '1K'): Promise<string | null> => {
-  const ai = getGeminiInstance();
-  
+export const generateSceneImage = async (model: string, prompt: string, size: '1K' | '2K' | '4K' = '1K'): Promise<{ url: string, assetId: string } | null> => {
+  const ai = await getGeminiInstance();
   try {
-    // Force aspect ratio to 4:3 for that TV feel
     const response = await ai.models.generateContent({
       model: model,
       contents: {
-        parts: [{ text: prompt + " aesthetic of 1984, CRT monitor style, dark, glitchy, vhs tape artifacting" }]
+        parts: [{ text: prompt + " aesthetic of 1984, CRT monitor style, dark, glitchy, vhs tape artifacting." }]
       },
       config: {
-        imageConfig: {
-          imageSize: size,
-          aspectRatio: "4:3" 
-        },
+        imageConfig: { imageSize: size, aspectRatio: "4:3" },
         safetySettings: SAFETY_SETTINGS,
       }
     });
 
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) {
-        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+        const base64 = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+        const blob = await (await fetch(base64)).blob();
+        const assetId = crypto.randomUUID();
+        await storageService.saveAsset(assetId, blob, part.inlineData.mimeType);
+        return { url: URL.createObjectURL(blob), assetId };
       }
     }
     return null;
   } catch (error) {
-    console.error("Image generation failed:", error);
+    console.error("Image failed", error);
     return null;
   }
 };
@@ -302,36 +356,34 @@ export const generateSceneImage = async (model: string, prompt: string, size: '1
 // --- Text to Speech ---
 
 export const generateSpeech = async (model: string, text: string): Promise<Uint8Array | null> => {
-  const ai = getGeminiInstance();
-
+  const ai = await getGeminiInstance();
   try {
     const response = await ai.models.generateContent({
-      model: model,
-      contents: { parts: [{ text }] },
-      config: {
-        responseModalities: [Modality.AUDIO],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: 'Puck' } // Puck has a deeper, more suitable tone
-          }
+        model: model, 
+        contents: { parts: [{ text }] },
+        config: {
+            responseModalities: [Modality.AUDIO],
+            speechConfig: {
+                voiceConfig: {
+                    prebuiltVoiceConfig: { voiceName: 'Puck' }
+                }
+            },
+            safetySettings: SAFETY_SETTINGS,
         }
-      }
     });
 
-    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (base64Audio) {
-       const binaryString = atob(base64Audio);
-       const len = binaryString.length;
-       const bytes = new Uint8Array(len);
-       for (let i = 0; i < len; i++) {
-         bytes[i] = binaryString.charCodeAt(i);
-       }
-       return bytes;
+    const base64 = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (base64) {
+        const binaryString = atob(base64);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+        }
+        return bytes;
     }
     return null;
-
   } catch (error) {
-    console.error("TTS generation failed:", error);
-    return null;
+      console.warn("TTS Generation failed", error);
+      return null;
   }
 };

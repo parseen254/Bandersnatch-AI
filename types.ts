@@ -22,16 +22,45 @@ export interface MetaMemory {
   narrativeThreads: string[];
 }
 
+// Exportable format
+export interface StoryLine {
+  version: number;
+  timestamp: number;
+  profile: PsychProfile | null;
+  memory: MetaMemory;
+  nodes: StoryNode[]; // Flattened tree
+}
+
+export interface AssetRef {
+  id: string;
+  type: 'image' | 'audio';
+  mimeType: string;
+}
+
 export interface StoryNode {
   id: string;
+  parentId: string | null; // Linked List / Tree structure
+  timestamp: number;
+  
   narrative: string;
   visualPrompt: string;
+  
+  // Assets are stored separately in IDB to save space in JSON exports
+  imageAssetId?: string; 
+  audioAssetId?: string;
+
   gameState: 'playing' | 'won' | 'lost';
+  autoProgress?: boolean;
   choices: {
     text: string;
-    nextId: string; // or 'ending'
-    effect?: string; // Description of effect on profile
+    nextId: string; 
+    effect?: string; 
   }[];
+  
+  // Runtime only
+  prefetched?: boolean;
+  imageUrl?: string; // Blob URL
+  audioUrl?: string; // Blob URL
 }
 
 export interface ChatMessage {

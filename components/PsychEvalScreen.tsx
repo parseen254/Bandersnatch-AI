@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AppConfig, ChatMessage, PsychProfile } from '../types';
-import { generateDirectorResponse, generatePsychProfile, generateSpeech, decodePCM } from '../services/geminiService';
+import { generateDirectorResponse, generatePsychProfile } from '../services/geminiService';
 import { Button } from './Button';
 
 interface PsychEvalProps {
@@ -14,33 +14,6 @@ export const PsychEvalScreen: React.FC<PsychEvalProps> = ({ config, onComplete }
   const [isProcessing, setIsProcessing] = useState(false);
   const [turns, setTurns] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-
-  useEffect(() => {
-    const AudioCtor = window.AudioContext || (window as any).webkitAudioContext;
-    audioContextRef.current = new AudioCtor({ sampleRate: 24000 });
-    return () => {
-        audioContextRef.current?.close();
-    };
-  }, []);
-
-  const playDirectorVoice = async (text: string) => {
-    if (!config.audioEnabled) return;
-    try {
-        const pcmData = await generateSpeech(config.ttsModel, text);
-        if (pcmData && audioContextRef.current) {
-            const ctx = audioContextRef.current;
-            if (ctx.state === 'suspended') await ctx.resume();
-            const buffer = decodePCM(pcmData, ctx);
-            const source = ctx.createBufferSource();
-            source.buffer = buffer;
-            source.connect(ctx.destination);
-            source.start(0);
-        }
-    } catch (e) {
-        console.error("Voice Error", e);
-    }
-  };
 
   useEffect(() => {
     const startEval = async () => {
@@ -49,7 +22,6 @@ export const PsychEvalScreen: React.FC<PsychEvalProps> = ({ config, onComplete }
         const response = await generateDirectorResponse(config.chatModel, [], "Begin the evaluation. Introduce yourself briefly and ask the first question.");
         const initialText = response || "System Error.";
         setHistory([{ role: 'model', text: initialText }]);
-        playDirectorVoice(initialText);
       } catch (e) {
         console.error(e);
         setHistory([{ role: 'model', text: "Connection unstable. State your name." }]);
@@ -79,11 +51,10 @@ export const PsychEvalScreen: React.FC<PsychEvalProps> = ({ config, onComplete }
     setTurns(nextTurn);
 
     try {
-      if (nextTurn >= 5) {
+      if (nextTurn >= 4) {
         const finalText = "Processing complete. Generating psych profile...";
         const finalMsg: ChatMessage = { role: 'model', text: finalText, isTyping: true };
         setHistory([...newHistory, finalMsg]);
-        playDirectorVoice(finalText);
         
         const conversation = newHistory.map(m => `${m.role.toUpperCase()}: ${m.text}`).join('\n');
         const profile = await generatePsychProfile(config.chatModel, conversation);
@@ -98,7 +69,6 @@ export const PsychEvalScreen: React.FC<PsychEvalProps> = ({ config, onComplete }
         const response = await generateDirectorResponse(config.chatModel, apiHistory, userMsg.text);
         const responseText = response || "...";
         setHistory([...newHistory, { role: 'model', text: responseText }]);
-        playDirectorVoice(responseText);
       }
     } catch (error) {
       console.error(error);

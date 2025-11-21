@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { GameStage, PsychProfile, StoryNode, AppConfig } from './types';
-import { DEFAULT_CONFIG, MODELS } from './constants';
+import { DEFAULT_CONFIG } from './constants';
 import { initializeGemini, getStoredProfile, isProfileFresh, clearAllData } from './services/geminiService';
+import { storageService } from './services/storageService';
 import { Button } from './components/Button';
-import { Input } from './components/Input';
 import { BootScreen } from './components/BootScreen';
 import { BiosScreen } from './components/BiosScreen';
 import { PsychEvalScreen } from './components/PsychEvalScreen';
@@ -11,38 +11,53 @@ import { StoryScreen } from './components/StoryScreen';
 
 const App: React.FC = () => {
   const [stage, setStage] = useState<GameStage>(GameStage.BOOT);
+  const [isDbReady, setIsDbReady] = useState(false);
   
-  // Initialize state from storage immediately
-  const [apiKey, setApiKey] = useState<string>(() => localStorage.getItem('BANDERSNATCH_API_KEY') || '');
+  const [apiKey, setApiKey] = useState<string>('');
   const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG);
-  const [psychProfile, setPsychProfile] = useState<PsychProfile | null>(() => {
-    const stored = getStoredProfile();
-    return isProfileFresh(stored) ? stored : null;
-  });
+  const [psychProfile, setPsychProfile] = useState<PsychProfile | null>(null);
 
   const hasCheckedSession = useRef(false);
   
-  // Persist API Key
+  // 1. Init DB and Load Data
   useEffect(() => {
-    if (apiKey) {
-      localStorage.setItem('BANDERSNATCH_API_KEY', apiKey);
+    const initSystem = async () => {
+      await storageService.waitForReady();
+      
+      const storedKey = await storageService.getSystemData<string>('apiKey');
+      if (storedKey) {
+        setApiKey(storedKey);
+        await initializeGemini(storedKey);
+      }
+      
+      const storedProfile = await getStoredProfile();
+      if (isProfileFresh(storedProfile)) {
+        setPsychProfile(storedProfile);
+      }
+      
+      setIsDbReady(true);
+    };
+    initSystem();
+  }, []);
+
+  // 2. Persist API Key Changes
+  useEffect(() => {
+    if (isDbReady && apiKey) {
       initializeGemini(apiKey);
     }
-  }, [apiKey]);
+  }, [apiKey, isDbReady]);
 
-  // Boot Sequence (Removed auto-redirect to let BiosScreen handle the choice)
+  // 3. Boot Sequence
   useEffect(() => {
-    if (stage === GameStage.BOOT && !hasCheckedSession.current) {
+    if (isDbReady && stage === GameStage.BOOT && !hasCheckedSession.current) {
       hasCheckedSession.current = true;
-      
       const timer = setTimeout(() => {
         setStage(GameStage.BIOS);
-      }, 4500); // 4.5s boot animation
+      }, 4500);
       return () => clearTimeout(timer);
     }
-  }, [stage]);
+  }, [stage, isDbReady]);
 
-  // Handlers
   const handleStartNewEval = () => {
     if (!apiKey) {
       alert("API KEY REQUIRED");
@@ -53,7 +68,6 @@ const App: React.FC = () => {
 
   const handleResumeSession = () => {
     if (!apiKey || !psychProfile) return;
-    console.log("Resuming session...");
     setStage(GameStage.LOADING_SCENE);
   };
 
@@ -62,14 +76,17 @@ const App: React.FC = () => {
     setStage(GameStage.LOADING_SCENE);
   };
 
-  const handleFullReset = () => {
-    clearAllData();
+  const handleSystemReset = async () => {
+    await clearAllData();
     setApiKey('');
     setPsychProfile(null);
     setConfig(DEFAULT_CONFIG);
     setStage(GameStage.BOOT);
-    hasCheckedSession.current = false; // Reset boot check to allow animation to play again
+    hasCheckedSession.current = false;
+    window.location.reload(); // Soft reload to ensure clean DB state context
   };
+
+  if (!isDbReady) return <div className="bg-black w-full h-screen" />;
 
   const renderStage = () => {
     switch (stage) {
@@ -85,7 +102,7 @@ const App: React.FC = () => {
             psychProfile={psychProfile}
             onInitialize={handleStartNewEval}
             onResume={handleResumeSession}
-            handleSystemReset={handleFullReset}
+            handleSystemReset={handleSystemReset}
           />
         );
       case GameStage.PSYCH_EVAL:
@@ -131,7 +148,7 @@ const App: React.FC = () => {
   return (
     <div className="relative min-h-screen w-full overflow-hidden">
       <div className="scanlines" />
-      <div className="crt-overlay" />
+      <div className="film-grain" />
       {renderStage()}
     </div>
   );
