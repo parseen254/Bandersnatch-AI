@@ -1,0 +1,5 @@
+{
+  "name": "Bandersnatch AI",
+  "description": "A client-side interactive psychological thriller using Google Gemini API. Features a reactive narrative, AI-generated visuals, and voice narration.",
+  "requestFramePermissions": []
+}
