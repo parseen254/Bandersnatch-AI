@@ -32,6 +32,11 @@ const App: React.FC = () => {
           setApiKey(storedKey);
           await initializeGemini(storedKey);
         }
+
+        const storedConfig = await storageService.getSystemData<AppConfig>('appConfig');
+        if (storedConfig) {
+          setConfig(storedConfig);
+        }
         
         const storedProfile = await getStoredProfile();
         if (isProfileFresh(storedProfile)) {
@@ -47,12 +52,16 @@ const App: React.FC = () => {
     initSystem();
   }, []);
 
-  // 2. Persist API Key Changes
+  // 2. Persist API Key & Config Changes
   useEffect(() => {
-    if (isDbReady && apiKey) {
-      initializeGemini(apiKey);
+    if (isDbReady) {
+      if (apiKey) {
+        initializeGemini(apiKey);
+        storageService.saveSystemData('apiKey', apiKey);
+      }
+      storageService.saveSystemData('appConfig', config);
     }
-  }, [apiKey, isDbReady]);
+  }, [apiKey, config, isDbReady]);
 
   // 3. Boot Sequence
   useEffect(() => {

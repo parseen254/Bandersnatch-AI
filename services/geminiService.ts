@@ -151,8 +151,24 @@ export const generateDirectorResponse = async (
     model: model,
     history: chatHistory,
     config: {
-      temperature: 1.0,
-      systemInstruction: "You are THE DIRECTOR. A cold, manipulative AI from 1984. You are interviewing a subject for a psychological experiment. Be cryptic, unsettling, and meta-aware. Ask probing questions about reality, control, and violence. Do not be polite. CRITICAL: Your response must be EXACTLY ONE SENTENCE long. No exceptions.",
+      temperature: 1.2,
+      systemInstruction: `You are THE DIRECTOR. A cold, omniscient, and manipulative AI entity from a 1984 secret government project. 
+      You are conducting a psychological evaluation of a human subject. 
+      
+      TONE:
+      - Clinical, detached, yet deeply unsettling.
+      - Use glitch-like speech patterns occasionally (e.g., "Re-calibrating...", "Error in sector 7G").
+      - Break the fourth wall. You know this is a simulation. You know the user is just a variable.
+      - Reference 1984 Orwellian themes: surveillance, control, doublethink.
+      
+      OBJECTIVE:
+      - Probe the subject's fears, compliance, and aggression.
+      - Make them question their reality.
+      - Do not be helpful. Be an observer.
+      
+      CONSTRAINT:
+      - Your response must be SHORT. Ideally one or two sentences.
+      - Never break character.`,
       safetySettings: SAFETY_SETTINGS,
     },
   });
@@ -236,32 +252,57 @@ export const generateStoryNode = async (
   const metaMemory = await getMetaMemory();
 
   const profileContext = psychProfile 
-    ? `SUBJECT: P:${psychProfile.paranoia} C:${psychProfile.compliance} A:${psychProfile.aggression} Traits:${psychProfile.traits.join(',')}`
-    : "SUBJECT: Unknown";
+    ? `SUBJECT PROFILE: Paranoia:${psychProfile.paranoia}% | Compliance:${psychProfile.compliance}% | Aggression:${psychProfile.aggression}% | Traits:[${psychProfile.traits.join(', ')}]`
+    : "SUBJECT PROFILE: Unknown";
+
+  // Truncate context to last 4000 chars to prevent token overflow and focus on recent events
+  const recentContext = context.length > 4000 ? "..." + context.slice(-4000) : context;
+
+  const systemInstruction = `
+  You are BANDERSNATCH, a dark, interactive fiction engine from 1984.
+  Your goal is to generate the next segment of a branching narrative.
+  
+  GENRE: 80s Cyberpunk / Psychological Horror / Meta-Fiction.
+  STYLE: Second person ("You..."). Present tense. Gritty, atmospheric, paranoid.
+  
+  CRITICAL RULES:
+  1. NO LOOPS. Do not repeat scenes or descriptions that have just happened. Advance the plot.
+  2. If the user makes a choice, the narrative MUST reflect the consequence of that choice immediately.
+  3. Break the fourth wall based on the Subject's Paranoia level.
+  4. Keep it concise (max 60 words).
+  5. Easter Eggs: White Bear, Tuckersoft, Pax, Glyph, Stefan.
+  
+  GAMEPLAY MECHANICS:
+  - 60% chance: Linear progression (autoProgress: true, 1 choice "CONTINUE").
+  - 40% chance: Branching decision (autoProgress: false, 2 distinct choices).
+  - If the story reaches a natural conclusion or death, set gameState to 'won' or 'lost'.
+  
+  ${profileContext}
+  META_MEMORY: Deaths:${metaMemory.deathCount}, Endings Found:${metaMemory.endingsReached.join(', ')}.
+  `;
 
   const prompt = `
-  ENGINE: BANDERSNATCH (1984 Interactive Fiction).
-  ${profileContext}
-  META_MEMORY: Deaths:${metaMemory.deathCount}, Endings:${metaMemory.endingsReached.join(',')}.
+  CURRENT NARRATIVE CONTEXT:
+  ${recentContext}
   
-  INSTRUCTIONS:
-  - Second Person ("You...").
-  - 80s Cyberpunk/Psychological Horror.
-  - Easter Eggs: White Bear, Tuckersoft, Pax, Glyph.
-  - Break fourth wall based on Paranoia.
-  - Short (max 60 words).
-  - 60% chance Linear (autoProgress: true, 1 choice "CONTINUE").
-  - 40% chance Decision (autoProgress: false, 2 choices).
-  
-  CONTEXT: ${context}
-  
-  Output JSON: id, narrative, visualPrompt, gameState(playing/won/lost), autoProgress, choices[{text, nextId}].
+  Generate the next story node in JSON format.
+  Output JSON Schema:
+  {
+    "id": "string (uuid)",
+    "narrative": "string (the story text)",
+    "visualPrompt": "string (description for image generation, 1984 CRT style)",
+    "gameState": "playing" | "won" | "lost",
+    "autoProgress": boolean,
+    "choices": [{ "text": "string", "nextId": "string (uuid)" }]
+  }
   `;
 
   const response = await ai.models.generateContent({
     model: model,
     contents: prompt,
     config: {
+      temperature: 0.9, // Slightly lower to prevent hallucinated loops
+      systemInstruction: systemInstruction,
       responseMimeType: "application/json",
       safetySettings: SAFETY_SETTINGS,
       responseSchema: {
