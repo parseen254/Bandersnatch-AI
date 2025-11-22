@@ -90,7 +90,7 @@ const App: React.FC = () => {
     setConfig(DEFAULT_CONFIG);
     setStage(GameStage.BOOT);
     hasCheckedSession.current = false;
-    window.location.reload(); // Soft reload to ensure clean DB state context
+    // Soft reset by resetting state, no reload needed
   };
 
   // Error State during Init

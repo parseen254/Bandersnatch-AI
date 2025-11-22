@@ -79,8 +79,9 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
       for (const char of text) {
           let w = 1;
           // Heuristic: Pause longer on punctuation to match natural speech rhythm
-          if ([',', ';'].includes(char)) w = 6; 
-          else if (['.', '!', '?', ':'].includes(char)) w = 15;
+          if ([',', ';'].includes(char)) w = 5; 
+          else if (['-', '—'].includes(char)) w = 8;
+          else if (['.', '!', '?', ':'].includes(char)) w = 12;
           totalWeight += w;
           weights.push(totalWeight);
       }
@@ -96,21 +97,31 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
           const start = useAudioClock ? audioStartTime! : fallbackStartTime;
           const elapsed = now - start;
           
-          // Progress 0 to 1
-          const progress = Math.min(1, Math.max(0, elapsed / durationSec));
+          // Finish text rendering slightly before audio ends (at 95%) 
+          // to ensure text is fully visible when speech concludes, handling trailing silence.
+          const textRevealDuration = durationSec > 0 ? durationSec * 0.95 : 0;
+          
+          // Progress 0 to 1 based on text reveal duration
+          const progress = textRevealDuration > 0 
+              ? Math.min(1, Math.max(0, elapsed / textRevealDuration))
+              : 1;
+
           const targetWeight = progress * totalWeight;
           
           // Find character index corresponding to current weight/time
           let charIndex = weights.findIndex(w => w >= targetWeight);
           
           // If at the end or progress complete
-          if (charIndex === -1 && progress >= 1) charIndex = text.length - 1;
-          
-          if (charIndex !== -1) {
-              setDisplayedNarrative(text.substring(0, charIndex + 1));
+          if (charIndex === -1) {
+              if (progress >= 1) charIndex = text.length - 1;
+              else charIndex = 0;
           }
+          
+          setDisplayedNarrative(text.substring(0, charIndex + 1));
 
-          if (progress < 1) {
+          // Continue animation loop until audio actually finishes (elapsed < durationSec)
+          // This keeps the cursor active (isTyping = true) while the audio plays out
+          if (elapsed < durationSec) {
               animationFrameRef.current = requestAnimationFrame(animate);
           } else {
               setDisplayedNarrative(text);
@@ -209,8 +220,8 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
     }
 
     try {
-       // Narrative Transition Crack
-       triggerCrack(400);
+       // Narrative Transition Crack - Always trigger a subtle crack on transition
+       triggerCrack(400, 'low');
 
        let newNode: StoryNode;
        let audioData: Uint8Array | null = null;
@@ -340,7 +351,7 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
   }
 
   return (
-    <div className="h-screen w-full flex flex-col bg-[#050505] relative overflow-hidden z-10">
+    <div className={`h-screen w-full flex flex-col bg-[#050505] relative overflow-hidden z-10 ${crackState !== 'none' ? 'grayscale-[20%] contrast-125' : ''}`}>
       <div className={`crack-overlay ${crackState === 'low' ? 'crack-active' : ''} ${crackState === 'high' ? 'crack-active-high' : ''}`}></div>
 
       <div className="absolute inset-0 z-0 overflow-hidden">
