@@ -16,6 +16,7 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
   const [displayedNarrative, setDisplayedNarrative] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [imageError, setImageError] = useState(false);
   const [loading, setLoading] = useState(true);
   const [context, setContext] = useState("The subject wakes up in a dimly lit room with a terminal.");
   const [crackState, setCrackState] = useState<'none' | 'low' | 'high'>('none');
@@ -28,6 +29,7 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
   const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const randomCrackLoopRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const currentRequestRef = useRef<string>("");
 
   // Cleanup
   useEffect(() => {
@@ -73,7 +75,6 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
       setIsTyping(true);
 
       // Weighted Pacing Logic for Lyric-like Sync
-      // We map the text length to the audio duration, but give punctuation more 'time'
       const weights: number[] = [];
       let totalWeight = 0;
       
@@ -81,16 +82,12 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
           const char = text[i];
           let w = 1;
           
-          // Word boundaries often imply slight cadence
           if (char === ' ') w = 2.5;
-          // Slight emphasis on capitals
           else if (/[A-Z]/.test(char)) w = 1.2;
           
-          // Punctuation pauses logic
           if ([',', ';'].includes(char)) w = 10; 
           else if (['-', '—'].includes(char)) w = 12;
           else if (['.', '!', '?', ':'].includes(char)) {
-             // Check for ellipsis to avoid massive pauses
              if (char === '.' && text[i+1] === '.') w = 3; 
              else w = 20;
           }
@@ -99,6 +96,8 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
           weights.push(totalWeight);
       }
 
+      // If audio is present, we use its exact timing.
+      // If no audio (fallback), we simulate a reading speed.
       const useAudioClock = audioStartTime !== undefined && audioContextRef.current !== null;
       const fallbackStartTime = performance.now() / 1000;
 
@@ -110,21 +109,17 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
           const start = useAudioClock ? audioStartTime! : fallbackStartTime;
           const elapsed = now - start;
           
-          // Finish text rendering slightly before audio ends (at 95%) 
-          // to ensure text is fully visible when speech concludes, handling trailing silence.
+          // Target finishing text at 95% of audio duration to handle trailing silence
           const textRevealDuration = durationSec > 0 ? durationSec * 0.95 : 0;
           
-          // Progress 0 to 1 based on text reveal duration
           const progress = textRevealDuration > 0 
               ? Math.min(1, Math.max(0, elapsed / textRevealDuration))
               : 1;
 
           const targetWeight = progress * totalWeight;
           
-          // Find character index corresponding to current weight/time
           let charIndex = weights.findIndex(w => w >= targetWeight);
           
-          // If at the end or progress complete
           if (charIndex === -1) {
               if (progress >= 1) charIndex = text.length - 1;
               else charIndex = 0;
@@ -132,8 +127,8 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
           
           setDisplayedNarrative(text.substring(0, charIndex + 1));
 
-          // Continue animation loop until audio actually finishes (elapsed < durationSec)
-          // This keeps the cursor active (isTyping = true) while the audio plays out
+          // Continue animation loop until full audio duration completes
+          // This keeps cursor active even after text is done
           if (elapsed < durationSec) {
               animationFrameRef.current = requestAnimationFrame(animate);
           } else {
@@ -145,17 +140,14 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
       animationFrameRef.current = requestAnimationFrame(animate);
   };
 
-  // --- Instability & Random Crack Logic ---
+  // --- Instability Logic ---
   
   const triggerCrack = (durationBase: number, intensityOverride?: 'low' | 'high') => {
-      // Randomize duration slightly
       const duration = durationBase + (Math.random() * 400 - 200);
-      
       let intensity: 'low' | 'high' = 'low';
       if (intensityOverride) {
           intensity = intensityOverride;
       } else {
-          // Higher instability = higher chance of high intensity
           intensity = (Math.random() < (instability / 15)) ? 'high' : 'low';
       }
 
@@ -166,7 +158,6 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
       }, duration);
   };
 
-  // Analyze narrative to set instability
   useEffect(() => {
       if (node?.narrative) {
           const text = node.narrative.toLowerCase();
@@ -175,8 +166,6 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
           stressWords.forEach(w => {
               if (text.includes(w)) stressCount++;
           });
-          
-          // Decay instability slightly over time, but boost with stress words
           setInstability(prev => {
               const decay = Math.max(0, prev - 1);
               return Math.min(10, decay + (stressCount * 2));
@@ -184,22 +173,16 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
       }
   }, [node]);
 
-  // Continuous Random Loop
   useEffect(() => {
       const loop = () => {
-          // Base chance 5%, increases with instability
           const triggerChance = 0.05 + (instability * 0.08);
-          
           if (Math.random() < triggerChance) {
               const duration = 200 + (instability * 100);
               triggerCrack(duration);
           }
-
-          // Schedule next check: shorter interval if unstable
           const baseInterval = 10000;
           const interval = Math.max(2000, baseInterval - (instability * 800));
           const jitter = Math.random() * 3000;
-          
           randomCrackLoopRef.current = setTimeout(loop, interval + jitter);
       };
 
@@ -210,7 +193,7 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
   }, [instability]);
 
 
-  // --- Timeline Load ---
+  // --- Load Logic ---
 
   useEffect(() => {
     if (showTimeline && node) {
@@ -222,18 +205,20 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
 
 
   const loadNode = async (targetNodeId: string | null, userChoiceText: string | null, isBacktrack = false) => {
+    const requestId = crypto.randomUUID();
+    currentRequestRef.current = requestId;
+
     setLoading(true);
     setDisplayedNarrative(""); 
     setIsTyping(false);
-    setImageUrl(null); // Clear image immediately for tension
+    setImageUrl(null);
+    setImageError(false);
     
-    // Stop audio if playing
     if (audioSourceRef.current) {
         try { audioSourceRef.current.stop(); } catch(e) {}
     }
 
     try {
-       // Narrative Transition Crack - Always trigger a subtle crack on transition
        triggerCrack(400, 'low');
 
        let newNode: StoryNode;
@@ -255,22 +240,56 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
        } else {
           const currentContext = context + (userChoiceText ? ` User chose: "${userChoiceText}".` : "");
           
-          const storyPromise = getStoryNode(config.textModel, currentContext, psychProfile, node?.id || null, userChoiceText || undefined);
-          
-          newNode = await storyPromise;
+          // Text Generation (Blocking for flow logic)
+          newNode = await getStoryNode(config.textModel, currentContext, psychProfile, node?.id || null, userChoiceText || undefined);
           setContext(prev => prev + " " + newNode.narrative);
-          
-          if (config.audioEnabled) {
-             audioData = await generateSpeech(config.ttsModel, newNode.narrative);
-             if (audioData) {
-                 const blob = new Blob([audioData], { type: 'audio/pcm' });
-                 const assetId = crypto.randomUUID();
-                 await storageService.saveAsset(assetId, blob, 'audio/pcm');
-                 newNode.audioAssetId = assetId;
-                 await storageService.saveNode(newNode);
-             }
-          }
        }
+
+       // Start Image Loading/Generation in Parallel (Non-blocking)
+       if (config.visualsEnabled && newNode.visualPrompt) {
+           (async () => {
+               try {
+                   let url: string | null = null;
+                   if (newNode.imageAssetId) {
+                       url = await storageService.getAssetUrl(newNode.imageAssetId);
+                   } else {
+                       // If we're backtracking or it's a new node without image yet
+                       const result = await generateSceneImage(config.imageModel, newNode.visualPrompt, config.imageSize);
+                       if (result) {
+                           url = result.url;
+                           newNode.imageAssetId = result.assetId;
+                           // Save node update with asset ID (async)
+                           await storageService.saveNode(newNode);
+                       }
+                   }
+                   
+                   // Only update state if this is still the active request
+                   if (currentRequestRef.current === requestId) {
+                       if (url) setImageUrl(url);
+                       else setImageError(true);
+                   }
+               } catch (e) {
+                   console.error("Image load error", e);
+                   if (currentRequestRef.current === requestId) setImageError(true);
+               }
+           })();
+       }
+
+       // Audio Generation/Loading (Blocking for sync)
+       // We want audio ready before showing text to ensure sync works
+       if (config.audioEnabled && !audioData && !isBacktrack) {
+           audioData = await generateSpeech(config.ttsModel, newNode.narrative);
+           if (audioData) {
+               const blob = new Blob([audioData], { type: 'audio/pcm' });
+               const assetId = crypto.randomUUID();
+               await storageService.saveAsset(assetId, blob, 'audio/pcm');
+               newNode.audioAssetId = assetId;
+               await storageService.saveNode(newNode);
+           }
+       }
+
+       // --- Render State ---
+       if (currentRequestRef.current !== requestId) return; // Abort if new request started
 
        setNode(newNode);
        
@@ -278,13 +297,11 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
        if (audioData && config.audioEnabled) {
            audioMetadata = await playAudio(audioData);
        } else {
-           // Fallback pacing logic: 50ms per char, min 2 seconds
            const readingSpeed = 0.05; 
            audioMetadata.duration = Math.max(2.0, newNode.narrative.length * readingSpeed); 
            audioMetadata.startTime = performance.now() / 1000;
        }
        
-       // Start synced typewriter
        startSyncedTypewriter(
            newNode.narrative, 
            audioMetadata.duration, 
@@ -299,22 +316,6 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
           return;
        }
 
-       if (config.visualsEnabled && newNode.visualPrompt) {
-         if (newNode.imageAssetId) {
-             const url = await storageService.getAssetUrl(newNode.imageAssetId);
-             setImageUrl(url);
-         } else {
-             // Generate new image in background
-             generateSceneImage(config.imageModel, newNode.visualPrompt, config.imageSize).then(async (result) => {
-                 if (result) {
-                     setImageUrl(result.url);
-                     newNode.imageAssetId = result.assetId;
-                     await storageService.saveNode(newNode);
-                 }
-             });
-         }
-       }
-
        if (!newNode.autoProgress && newNode.choices.length > 0 && !isBacktrack) {
           newNode.choices.slice(0, 2).forEach(c => {
              prefetchNode(config.textModel, context + " " + newNode.narrative, psychProfile, c.text, newNode.id);
@@ -323,8 +324,10 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
 
     } catch (e) {
        console.error(e);
-       setGlobalStage(GameStage.ERROR);
-       setLoading(false);
+       if (currentRequestRef.current === requestId) {
+           setGlobalStage(GameStage.ERROR);
+           setLoading(false);
+       }
     }
   };
 
@@ -373,12 +376,21 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
     <div className={`h-screen w-full flex flex-col bg-[#050505] relative overflow-hidden z-10 ${crackState !== 'none' ? 'grayscale-[20%] contrast-125' : ''}`}>
       <div className={`crack-overlay ${crackState === 'low' ? 'crack-active' : ''} ${crackState === 'high' ? 'crack-active-high' : ''}`}></div>
 
-      <div className="absolute inset-0 z-0 overflow-hidden">
-          {imageUrl && (
+      <div className="absolute inset-0 z-0 overflow-hidden bg-black">
+          {imageUrl ? (
               <div className="w-full h-full relative animate-ken-burns animate-ripple">
                  <img src={imageUrl} alt="Scene" className="w-full h-full object-cover opacity-60 grayscale-[30%] contrast-125" />
                  <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-transparent to-black" />
               </div>
+          ) : imageError ? (
+               <div className="w-full h-full flex items-center justify-center relative">
+                  <div className="scanlines opacity-50" />
+                  <div className="text-danger font-mono text-2xl tracking-[0.5em] animate-pulse z-10 glitch-text">
+                      NO SIGNAL
+                  </div>
+               </div>
+          ) : (
+              <div className="w-full h-full bg-black" />
           )}
       </div>
 
@@ -391,10 +403,10 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
          </div>
 
          <div className="w-full max-w-5xl mx-auto flex flex-col gap-8 mb-12">
-             <div className="bg-black/60 backdrop-blur-md p-8 border border-white/10 rounded-sm min-h-[160px] flex flex-col justify-end">
+             <div className="bg-black/60 backdrop-blur-md p-8 border border-white/10 rounded-sm min-h-[160px] flex flex-col justify-end shadow-2xl">
                  <p className="text-2xl md:text-3xl text-white leading-relaxed font-medium drop-shadow-lg font-display">
                      {displayedNarrative}
-                     {isTyping && <span className="inline-block w-3 h-8 bg-white align-middle ml-1 animate-blink">▋</span>}
+                     {isTyping && <span className="inline-block w-3 h-8 bg-white align-middle ml-1 animate-blink shadow-[0_0_10px_white]"></span>}
                  </p>
              </div>
 
