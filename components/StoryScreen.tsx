@@ -27,21 +27,21 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const randomCrackLoopRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const typeWriterRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
 
   // Cleanup
   useEffect(() => {
     return () => {
       if (crackTimerRef.current) clearTimeout(crackTimerRef.current);
       if (randomCrackLoopRef.current) clearTimeout(randomCrackLoopRef.current);
-      if (typeWriterRef.current) clearInterval(typeWriterRef.current);
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
       if (audioContextRef.current) {
           audioContextRef.current.close();
       }
     };
   }, []);
 
-  const playAudio = async (data: Uint8Array) => {
+  const playAudio = async (data: Uint8Array): Promise<{ duration: number, startTime: number }> => {
       if (!audioContextRef.current) {
           audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
       }
@@ -61,8 +61,64 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
       source.buffer = buffer;
       source.connect(audioContextRef.current.destination);
       audioSourceRef.current = source;
-      source.start(0);
-      return buffer.duration;
+      
+      const startTime = audioContextRef.current.currentTime;
+      source.start(startTime);
+      return { duration: buffer.duration, startTime };
+  };
+
+  const startSyncedTypewriter = (text: string, durationSec: number, audioStartTime?: number) => {
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+      setDisplayedNarrative("");
+      setIsTyping(true);
+
+      // Weighted Pacing Logic for Lyric-like Sync
+      // We map the text length to the audio duration, but give punctuation more 'time'
+      const weights: number[] = [];
+      let totalWeight = 0;
+      for (const char of text) {
+          let w = 1;
+          // Heuristic: Pause longer on punctuation to match natural speech rhythm
+          if ([',', ';'].includes(char)) w = 6; 
+          else if (['.', '!', '?', ':'].includes(char)) w = 15;
+          totalWeight += w;
+          weights.push(totalWeight);
+      }
+
+      const fallbackStartTime = performance.now() / 1000;
+      const useAudioClock = audioStartTime !== undefined && audioContextRef.current;
+
+      const animate = () => {
+          const now = useAudioClock 
+            ? audioContextRef.current!.currentTime 
+            : performance.now() / 1000;
+            
+          const start = useAudioClock ? audioStartTime! : fallbackStartTime;
+          const elapsed = now - start;
+          
+          // Progress 0 to 1
+          const progress = Math.min(1, Math.max(0, elapsed / durationSec));
+          const targetWeight = progress * totalWeight;
+          
+          // Find character index corresponding to current weight/time
+          let charIndex = weights.findIndex(w => w >= targetWeight);
+          
+          // If at the end or progress complete
+          if (charIndex === -1 && progress >= 1) charIndex = text.length - 1;
+          
+          if (charIndex !== -1) {
+              setDisplayedNarrative(text.substring(0, charIndex + 1));
+          }
+
+          if (progress < 1) {
+              animationFrameRef.current = requestAnimationFrame(animate);
+          } else {
+              setDisplayedNarrative(text);
+              setIsTyping(false);
+          }
+      };
+      
+      animationFrameRef.current = requestAnimationFrame(animate);
   };
 
   // --- Instability & Random Crack Logic ---
@@ -140,28 +196,6 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
     }
   }, [showTimeline, node]);
 
-  const startTypewriter = (text: string, durationSec?: number) => {
-      if (typeWriterRef.current) clearInterval(typeWriterRef.current);
-      setDisplayedNarrative("");
-      setIsTyping(true);
-      
-      let charIndex = 0;
-      // If audio duration exists, calculate ms per char to sync end times
-      // We add a small buffer to ensure text finishes slightly before or with audio
-      const totalMs = durationSec ? (durationSec * 1000) : 0;
-      const msPerChar = (durationSec && text.length > 0) 
-          ? Math.max(20, totalMs / text.length) 
-          : 30;
-
-      typeWriterRef.current = setInterval(() => {
-          setDisplayedNarrative(text.substring(0, charIndex + 1));
-          charIndex++;
-          if (charIndex >= text.length) {
-              if (typeWriterRef.current) clearInterval(typeWriterRef.current);
-              setIsTyping(false);
-          }
-      }, msPerChar);
-  };
 
   const loadNode = async (targetNodeId: string | null, userChoiceText: string | null, isBacktrack = false) => {
     setLoading(true);
@@ -216,13 +250,16 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
 
        setNode(newNode);
        
-       let audioDuration = 0;
+       let audioMetadata = { duration: 0, startTime: 0 };
        if (audioData && config.audioEnabled) {
-           audioDuration = await playAudio(audioData);
+           audioMetadata = await playAudio(audioData);
+       } else {
+           // Default pacing if no audio (approx 60ms per char)
+           audioMetadata.duration = newNode.narrative.length * 0.06; 
        }
        
-       // Start typewriter AFTER node is set, using audio duration for sync
-       startTypewriter(newNode.narrative, audioDuration);
+       // Start synced typewriter
+       startSyncedTypewriter(newNode.narrative, audioMetadata.duration, config.audioEnabled ? audioMetadata.startTime : undefined);
        
        setLoading(false); 
 
@@ -237,7 +274,7 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
              const url = await storageService.getAssetUrl(newNode.imageAssetId);
              setImageUrl(url);
          } else {
-             // Generate new image
+             // Generate new image in background
              generateSceneImage(config.imageModel, newNode.visualPrompt, config.imageSize).then(async (result) => {
                  if (result) {
                      setImageUrl(result.url);
