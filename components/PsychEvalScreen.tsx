@@ -80,15 +80,15 @@ export const PsychEvalScreen: React.FC<PsychEvalProps> = ({ config, onComplete }
 
   return (
     <div className="h-screen w-full flex flex-col bg-[#0a0a0a]">
-      <header className="p-6 flex justify-between items-center border-b border-white/5">
+      <header className="p-4 md:p-6 flex justify-between items-center border-b border-white/5">
         <h2 className="text-white font-mono text-xs tracking-[0.2em] uppercase">Psych_Eval // DIRECTOR</h2>
         {isProcessing && <span className="text-white/50 text-[10px] font-mono uppercase tracking-widest animate-pulse">Processing</span>}
       </header>
 
-      <div className="flex-1 overflow-y-auto p-6 md:p-12 space-y-8" ref={scrollRef}>
+      <div className="flex-1 overflow-y-auto p-4 md:p-12 space-y-6 md:space-y-8 scrollbar-hide" ref={scrollRef}>
         {history.map((msg, i) => (
           <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[80%] md:max-w-[60%] ${msg.role === 'user' ? 'text-right' : 'text-left'}`}>
+            <div className={`max-w-[85%] md:max-w-[60%] ${msg.role === 'user' ? 'text-right' : 'text-left'}`}>
               <p className="text-[10px] text-white/30 mb-2 font-mono uppercase tracking-widest">
                 {msg.role === 'model' ? 'THE DIRECTOR' : 'SUBJECT'}
               </p>
@@ -112,10 +112,10 @@ export const PsychEvalScreen: React.FC<PsychEvalProps> = ({ config, onComplete }
         )}
       </div>
 
-      <div className="p-6 md:p-12 border-t border-white/5">
+      <div className="p-4 md:p-12 border-t border-white/5">
         <form onSubmit={handleSubmit} className="max-w-4xl mx-auto relative">
           <input 
-            className="w-full bg-transparent text-white font-mono text-xl md:text-2xl outline-none placeholder-white/20 border-b border-white/20 py-4 focus:border-white transition-colors"
+            className="w-full bg-transparent text-white font-mono text-lg md:text-2xl outline-none placeholder-white/20 border-b border-white/20 py-4 focus:border-white transition-colors"
             placeholder={isProcessing ? "..." : "Type your response..."}
             value={input}
             onChange={(e) => setInput(e.target.value)}

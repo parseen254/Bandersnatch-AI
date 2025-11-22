@@ -394,29 +394,29 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
           )}
       </div>
 
-      <div className="relative z-10 flex flex-col h-full justify-between p-6 md:p-12">
-         <div className="flex justify-between items-start opacity-50 hover:opacity-100 transition-opacity">
+      <div className="relative z-10 flex flex-col h-full justify-between p-4 md:p-12 overflow-y-auto scrollbar-hide">
+         <div className="flex justify-between items-start opacity-50 hover:opacity-100 transition-opacity shrink-0 mb-4">
              <h1 className="text-white font-mono text-xs tracking-widest uppercase">Bandersnatch Interactive</h1>
              <button onClick={() => setShowTimeline(true)} className="text-xs text-white font-mono border border-white/30 px-3 py-1 hover:bg-white hover:text-black transition-colors">
                 [ TIMELINE ]
              </button>
          </div>
 
-         <div className="w-full max-w-5xl mx-auto flex flex-col gap-8 mb-12">
-             <div className="bg-black/60 backdrop-blur-md p-8 border border-white/10 rounded-sm min-h-[160px] flex flex-col justify-end shadow-2xl">
-                 <p className="text-2xl md:text-3xl text-white leading-relaxed font-medium drop-shadow-lg font-display">
+         <div className="w-full max-w-5xl mx-auto flex flex-col gap-6 md:gap-8 mb-4 md:mb-12 mt-auto">
+             <div className="bg-black/60 backdrop-blur-md p-6 md:p-8 border border-white/10 rounded-sm min-h-[120px] md:min-h-[160px] flex flex-col justify-end shadow-2xl">
+                 <p className="text-lg md:text-3xl text-white leading-relaxed font-medium drop-shadow-lg font-display">
                      {displayedNarrative}
-                     {isTyping && <span className="inline-block w-3 h-8 bg-white align-middle ml-1 animate-blink shadow-[0_0_10px_white]"></span>}
+                     {isTyping && <span className="inline-block w-2 h-6 md:w-3 md:h-8 bg-white align-middle ml-1 animate-blink shadow-[0_0_10px_white]"></span>}
                  </p>
              </div>
 
              <div className="flex flex-col gap-2">
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                      {node?.choices.map((choice, idx) => (
                          <button 
                             key={idx} 
                             onClick={() => handleChoice(choice.text, choice.nextId)}
-                            className={`group relative py-6 px-8 bg-white/5 border border-white/20 transition-all duration-200 overflow-hidden ${
+                            className={`group relative py-4 px-6 md:py-6 md:px-8 bg-white/5 border border-white/20 transition-all duration-200 overflow-hidden ${
                               node.choices.length === 1 ? "col-span-1 md:col-span-2 text-center" : ""
                             } ${
                               isTyping 
@@ -426,7 +426,7 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
                             disabled={isTyping}
                          >
                              <div className="absolute bottom-0 left-0 h-1 w-full bg-white scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-300"></div>
-                             <span className={`text-xl md:text-2xl text-white font-bold tracking-wide font-display uppercase ${!isTyping && "group-hover:text-black"}`}>
+                             <span className={`text-lg md:text-2xl text-white font-bold tracking-wide font-display uppercase ${!isTyping && "group-hover:text-black"}`}>
                                 {node.choices.length === 1 && choice.text === "Continue" ? "[ CONTINUE ]" : choice.text}
                              </span>
                          </button>

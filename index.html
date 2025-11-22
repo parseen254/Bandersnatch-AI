@@ -75,6 +75,15 @@
       ::-webkit-scrollbar-thumb:hover {
         background: #555;
       }
+
+      /* Hide Scrollbar Utility */
+      .scrollbar-hide::-webkit-scrollbar {
+          display: none;
+      }
+      .scrollbar-hide {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+      }
       
       /* Animations */
       @keyframes blink {
