@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { GameStage, PsychProfile, StoryNode, AppConfig } from './types';
 import { DEFAULT_CONFIG } from './constants';
@@ -12,6 +13,7 @@ import { StoryScreen } from './components/StoryScreen';
 const App: React.FC = () => {
   const [stage, setStage] = useState<GameStage>(GameStage.BOOT);
   const [isDbReady, setIsDbReady] = useState(false);
+  const [initError, setInitError] = useState<string | null>(null);
   
   const [apiKey, setApiKey] = useState<string>('');
   const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG);
@@ -22,20 +24,25 @@ const App: React.FC = () => {
   // 1. Init DB and Load Data
   useEffect(() => {
     const initSystem = async () => {
-      await storageService.waitForReady();
-      
-      const storedKey = await storageService.getSystemData<string>('apiKey');
-      if (storedKey) {
-        setApiKey(storedKey);
-        await initializeGemini(storedKey);
+      try {
+        await storageService.waitForReady();
+        
+        const storedKey = await storageService.getSystemData<string>('apiKey');
+        if (storedKey) {
+          setApiKey(storedKey);
+          await initializeGemini(storedKey);
+        }
+        
+        const storedProfile = await getStoredProfile();
+        if (isProfileFresh(storedProfile)) {
+          setPsychProfile(storedProfile);
+        }
+        
+        setIsDbReady(true);
+      } catch (e) {
+        console.error("System Init Failed", e);
+        setInitError(e instanceof Error ? e.message : "STORAGE_INIT_FAILURE");
       }
-      
-      const storedProfile = await getStoredProfile();
-      if (isProfileFresh(storedProfile)) {
-        setPsychProfile(storedProfile);
-      }
-      
-      setIsDbReady(true);
     };
     initSystem();
   }, []);
@@ -86,7 +93,31 @@ const App: React.FC = () => {
     window.location.reload(); // Soft reload to ensure clean DB state context
   };
 
-  if (!isDbReady) return <div className="bg-black w-full h-screen" />;
+  // Error State during Init
+  if (initError) {
+    return (
+      <div className="relative min-h-screen w-full flex flex-col items-center justify-center bg-[#050505] text-danger font-mono p-8 text-center">
+        <div className="scanlines" />
+        <h1 className="text-2xl mb-4 tracking-widest">SYSTEM FAILURE</h1>
+        <p className="text-xs opacity-70 mb-8">{initError}</p>
+        <p className="text-[10px] text-white/30 max-w-md">
+          Local storage access is required. If you are in Private/Incognito mode, 
+          database access may be blocked. Please try a standard window.
+        </p>
+      </div>
+    );
+  }
+
+  // Loading State
+  if (!isDbReady) {
+    return (
+      <div className="relative min-h-screen w-full flex flex-col items-center justify-center bg-[#050505] text-white/30 font-mono text-xs tracking-widest">
+         <div className="scanlines" />
+         <div className="w-8 h-8 border-2 border-white/20 border-t-white rounded-full animate-spin mb-4"></div>
+         INITIALIZING KERNEL...
+      </div>
+    );
+  }
 
   const renderStage = () => {
     switch (stage) {

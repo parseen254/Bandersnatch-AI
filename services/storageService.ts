@@ -20,9 +20,19 @@ class BandersnatchStorage {
 
   private init(): Promise<void> {
     return new Promise((resolve, reject) => {
+      if (typeof indexedDB === 'undefined') {
+        return reject(new Error("IndexedDB not supported in this environment"));
+      }
+
       const request = indexedDB.open(DB_NAME, DB_VERSION);
 
+      // Safety timeout for hanging DB connections
+      const timeout = setTimeout(() => {
+          reject(new Error("Database initialization timed out."));
+      }, 3000);
+
       request.onerror = () => {
+        clearTimeout(timeout);
         console.error("DB Error", request.error);
         reject(request.error);
       };
@@ -49,6 +59,7 @@ class BandersnatchStorage {
       };
 
       request.onsuccess = () => {
+        clearTimeout(timeout);
         this.db = request.result;
         resolve();
       };
@@ -147,8 +158,6 @@ class BandersnatchStorage {
       const reader = new FileReader();
       reader.onloadend = () => {
         const base64 = reader.result as string;
-        // Strip data:mime/type;base64, prefix for cleaner storage if needed, 
-        // but keeping it is safer for reconstruction
         resolve(base64); 
       };
       reader.onerror = reject;

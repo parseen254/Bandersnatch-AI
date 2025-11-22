@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 
 export const BootScreen: React.FC = () => {
@@ -19,12 +20,20 @@ export const BootScreen: React.FC = () => {
     ];
 
     let delay = 0;
+    const timeouts: ReturnType<typeof setTimeout>[] = [];
+
     bootSequence.forEach((line, index) => {
       delay += Math.random() * 400 + 100;
-      setTimeout(() => {
+      const t = setTimeout(() => {
         setLines(prev => [...prev, line]);
       }, delay);
+      timeouts.push(t);
     });
+
+    // Cleanup function to prevent state updates if component unmounts
+    return () => {
+      timeouts.forEach(clearTimeout);
+    };
   }, []);
 
   return (
