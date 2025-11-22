@@ -143,7 +143,7 @@ export const generateDirectorResponse = async (
   model: string,
   history: { role: string; parts: { text: string }[] }[],
   lastUserMessage: string
-) => {
+): Promise<{ text: string; systemLog?: string }> => {
   const ai = await getGeminiInstance();
   const chatHistory = history.map(h => ({ role: h.role, parts: h.parts }));
 
@@ -152,12 +152,20 @@ export const generateDirectorResponse = async (
     history: chatHistory,
     config: {
       temperature: 1.2,
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          dialogue: { type: Type.STRING },
+          systemLog: { type: Type.STRING, description: "Internal system status, error code, or analysis log (e.g. 'PARSING_FEAR_INDEX', 'ERROR_NULL_INPUT')" }
+        },
+        required: ["dialogue"]
+      },
       systemInstruction: `You are THE DIRECTOR. A cold, omniscient, and manipulative AI entity from a 1984 secret government project. 
       You are conducting a psychological evaluation of a human subject. 
       
       TONE:
       - Clinical, detached, yet deeply unsettling.
-      - Use glitch-like speech patterns occasionally (e.g., "Re-calibrating...", "Error in sector 7G").
       - Break the fourth wall. You know this is a simulation. You know the user is just a variable.
       - Reference 1984 Orwellian themes: surveillance, control, doublethink.
       
@@ -166,15 +174,24 @@ export const generateDirectorResponse = async (
       - Make them question their reality.
       - Do not be helpful. Be an observer.
       
-      CONSTRAINT:
-      - Your response must be SHORT. Ideally one or two sentences.
-      - Never break character.`,
+      OUTPUT FORMAT:
+      - Return JSON with 'dialogue' (what you say to the user) and optional 'systemLog' (internal processing codes).
+      - 'systemLog' should be short, uppercase, underscore-separated codes like "ANALYZING_RESPONSE", "ERROR_404_EMPATHY", "SUBJECT_RESISTANCE_DETECTED".
+      - 'dialogue' must be SHORT. Ideally one or two sentences.`,
       safetySettings: SAFETY_SETTINGS,
     },
   });
 
   const result = await chat.sendMessage({ message: lastUserMessage });
-  return result.text;
+  const text = result.text;
+  if (!text) return { text: "..." };
+  
+  try {
+    const json = JSON.parse(cleanJson(text));
+    return { text: json.dialogue, systemLog: json.systemLog };
+  } catch (e) {
+    return { text: text };
+  }
 };
 
 export const generatePsychProfile = async (model: string, conversationText: string): Promise<PsychProfile> => {

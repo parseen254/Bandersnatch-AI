@@ -20,8 +20,7 @@ export const PsychEvalScreen: React.FC<PsychEvalProps> = ({ config, onComplete }
       setIsProcessing(true);
       try {
         const response = await generateDirectorResponse(config.chatModel, [], "Begin the evaluation. Introduce yourself briefly and ask the first question.");
-        const initialText = response || "System Error.";
-        setHistory([{ role: 'model', text: initialText }]);
+        setHistory([{ role: 'model', text: response.text, systemLog: response.systemLog }]);
       } catch (e) {
         console.error(e);
         setHistory([{ role: 'model', text: "Connection unstable. State your name." }]);
@@ -67,8 +66,7 @@ export const PsychEvalScreen: React.FC<PsychEvalProps> = ({ config, onComplete }
         }));
 
         const response = await generateDirectorResponse(config.chatModel, apiHistory, userMsg.text);
-        const responseText = response || "...";
-        setHistory([...newHistory, { role: 'model', text: responseText }]);
+        setHistory([...newHistory, { role: 'model', text: response.text, systemLog: response.systemLog }]);
       }
     } catch (error) {
       console.error(error);
@@ -89,8 +87,13 @@ export const PsychEvalScreen: React.FC<PsychEvalProps> = ({ config, onComplete }
         {history.map((msg, i) => (
           <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div className={`max-w-[85%] md:max-w-[60%] ${msg.role === 'user' ? 'text-right' : 'text-left'}`}>
-              <p className="text-[10px] text-white/30 mb-2 font-mono uppercase tracking-widest">
+              <p className="text-[10px] text-white/30 mb-2 font-mono uppercase tracking-widest flex items-center gap-2">
                 {msg.role === 'model' ? 'THE DIRECTOR' : 'SUBJECT'}
+                {msg.systemLog && (
+                  <span className="text-accent/50 text-[8px] border border-accent/20 px-1 py-0.5 rounded-sm animate-pulse">
+                    [{msg.systemLog}]
+                  </span>
+                )}
               </p>
               <p className={`text-lg md:text-xl leading-relaxed ${msg.role === 'user' ? 'text-white font-medium' : 'text-white/80 font-light'}`}>
                 {msg.text}

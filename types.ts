@@ -68,6 +68,7 @@ export interface StoryNode {
 export interface ChatMessage {
   role: 'user' | 'model' | 'system';
   text: string;
+  systemLog?: string;
   isTyping?: boolean;
 }
 
