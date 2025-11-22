@@ -76,18 +76,31 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
       // We map the text length to the audio duration, but give punctuation more 'time'
       const weights: number[] = [];
       let totalWeight = 0;
-      for (const char of text) {
+      
+      for (let i = 0; i < text.length; i++) {
+          const char = text[i];
           let w = 1;
-          // Heuristic: Pause longer on punctuation to match natural speech rhythm
-          if ([',', ';'].includes(char)) w = 5; 
-          else if (['-', '—'].includes(char)) w = 8;
-          else if (['.', '!', '?', ':'].includes(char)) w = 12;
+          
+          // Word boundaries often imply slight cadence
+          if (char === ' ') w = 2.5;
+          // Slight emphasis on capitals
+          else if (/[A-Z]/.test(char)) w = 1.2;
+          
+          // Punctuation pauses logic
+          if ([',', ';'].includes(char)) w = 10; 
+          else if (['-', '—'].includes(char)) w = 12;
+          else if (['.', '!', '?', ':'].includes(char)) {
+             // Check for ellipsis to avoid massive pauses
+             if (char === '.' && text[i+1] === '.') w = 3; 
+             else w = 20;
+          }
+          
           totalWeight += w;
           weights.push(totalWeight);
       }
 
+      const useAudioClock = audioStartTime !== undefined && audioContextRef.current !== null;
       const fallbackStartTime = performance.now() / 1000;
-      const useAudioClock = audioStartTime !== undefined && audioContextRef.current;
 
       const animate = () => {
           const now = useAudioClock 
@@ -265,12 +278,18 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
        if (audioData && config.audioEnabled) {
            audioMetadata = await playAudio(audioData);
        } else {
-           // Default pacing if no audio (approx 60ms per char)
-           audioMetadata.duration = newNode.narrative.length * 0.06; 
+           // Fallback pacing logic: 50ms per char, min 2 seconds
+           const readingSpeed = 0.05; 
+           audioMetadata.duration = Math.max(2.0, newNode.narrative.length * readingSpeed); 
+           audioMetadata.startTime = performance.now() / 1000;
        }
        
        // Start synced typewriter
-       startSyncedTypewriter(newNode.narrative, audioMetadata.duration, config.audioEnabled ? audioMetadata.startTime : undefined);
+       startSyncedTypewriter(
+           newNode.narrative, 
+           audioMetadata.duration, 
+           (config.audioEnabled && audioData) ? audioMetadata.startTime : undefined
+       );
        
        setLoading(false); 
 
