@@ -95,38 +95,38 @@ export const BiosScreen: React.FC<BiosScreenProps> = ({
       {/* Vignette to fade edges */}
       <div className="absolute inset-0 bg-[radial-gradient(circle,transparent_20%,#000000_95%)] pointer-events-none z-0"></div>
 
-      <div className="relative z-20 flex flex-col items-center pt-16 md:pt-24 mb-8">
-        <p className="text-white/30 font-mono text-xs tracking-[0.3em] uppercase mb-2">System v2.5 Ready</p>
-        <h1 className="text-6xl md:text-8xl font-bold text-white tracking-tighter text-bandersnatch select-none">
+      <div className="relative z-20 flex flex-col items-center pt-12 md:pt-24 mb-4 md:mb-8 px-4 text-center">
+        <p className="text-white/30 font-mono text-[10px] md:text-xs tracking-[0.3em] uppercase mb-2">System v2.5 Ready</p>
+        <h1 className="text-4xl sm:text-6xl md:text-8xl font-bold text-white tracking-tighter text-bandersnatch select-none break-all md:break-normal">
           BANDERSNATCH
         </h1>
       </div>
 
-      <div className="relative z-20 flex-1 w-full max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-12 gap-8 px-8 pb-12">
-        <div className="md:col-span-5 flex flex-col justify-center md:justify-end md:pb-24 space-y-2">
-          <div className="text-white/20 font-mono text-xs uppercase tracking-widest space-y-3 select-none">
+      <div className="relative z-20 flex-1 w-full max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-12 gap-6 md:gap-8 px-4 md:px-8 pb-8 md:pb-12 overflow-y-auto scrollbar-hide">
+        <div className="md:col-span-5 flex flex-col justify-center md:justify-end md:pb-24 space-y-2 order-2 md:order-1">
+          <div className="text-white/20 font-mono text-[10px] md:text-xs uppercase tracking-widest space-y-3 select-none hidden md:block">
             <p className="flex items-center gap-2"><span className="w-1 h-1 bg-white/20"></span> SYSTEM READY.</p>
             <p className="flex items-center gap-2"><span className="w-1 h-1 bg-white/20"></span> MEMORY LINKED.</p>
           </div>
         </div>
 
-        <div className="md:col-span-7 flex flex-col justify-center md:pl-12 gap-8">
+        <div className="md:col-span-7 flex flex-col justify-center md:pl-12 gap-6 md:gap-8 order-1 md:order-2">
           
           {hasValidSession && (
             <div className="group cursor-pointer" onClick={onResume}>
-              <div className="border border-white/10 bg-black/80 backdrop-blur-sm p-6 relative overflow-hidden transition-all duration-300 hover:bg-white/10 hover:border-white/20">
+              <div className="border border-white/10 bg-black/80 backdrop-blur-sm p-4 md:p-6 relative overflow-hidden transition-all duration-300 hover:bg-white/10 hover:border-white/20">
                 <div className="absolute top-4 bottom-4 left-0 w-1 bg-accent shadow-[0_0_10px_#57e668]"></div>
                 <div className="pl-4">
-                  <p className="text-accent text-xs font-mono tracking-widest mb-1">SAVE_DATA_FOUND</p>
-                  <h2 className="text-2xl text-white font-mono tracking-wider">RESUME SIMULATION</h2>
-                  <p className="text-white/40 text-xs mt-2 font-mono">Last Access: {psychProfile ? formatDate(psychProfile.timestamp) : 'UNKNOWN'}</p>
+                  <p className="text-accent text-[10px] md:text-xs font-mono tracking-widest mb-1">SAVE_DATA_FOUND</p>
+                  <h2 className="text-xl md:text-2xl text-white font-mono tracking-wider">RESUME SIMULATION</h2>
+                  <p className="text-white/40 text-[10px] md:text-xs mt-2 font-mono">Last Access: {psychProfile ? formatDate(psychProfile.timestamp) : 'UNKNOWN'}</p>
                 </div>
               </div>
             </div>
           )}
 
-          <div className="flex flex-col gap-4 mt-4">
-             <div className="border border-white/10 bg-black/80 backdrop-blur-sm p-6">
+          <div className="flex flex-col gap-4 mt-2 md:mt-4">
+             <div className="border border-white/10 bg-black/80 backdrop-blur-sm p-4 md:p-6">
                 {!hasValidSession && (
                   <div className="mb-6">
                     <Input 
@@ -136,14 +136,14 @@ export const BiosScreen: React.FC<BiosScreenProps> = ({
                       value={apiKey}
                       onChange={(e) => setApiKey(e.target.value)}
                       placeholder="ENTER GEMINI KEY"
-                      className="tracking-widest"
+                      className="tracking-widest text-sm md:text-base"
                     />
-                    <div className="mt-2 text-right">
+                    <div className="mt-4 text-center md:text-right">
                       <a 
                         href="https://aistudio.google.com/app/api-keys" 
                         target="_blank" 
                         rel="noopener noreferrer"
-                        className="text-[10px] font-mono text-accent/70 hover:text-accent hover:underline tracking-widest uppercase"
+                        className="inline-block p-2 md:p-0 text-[10px] font-mono text-accent/70 hover:text-accent hover:underline tracking-widest uppercase"
                       >
                         [ NO KEY? GENERATE ONE HERE ]
                       </a>
@@ -163,13 +163,13 @@ export const BiosScreen: React.FC<BiosScreenProps> = ({
              </div>
           </div>
 
-          <div className="flex justify-center gap-6 mt-8">
-             <button onClick={() => setShowSettings(!showSettings)} className="text-[10px] uppercase tracking-[0.2em] text-white/30 hover:text-white/80 transition-colors">[ CONFIGURE ]</button>
-             <button onClick={handleSystemReset} className="text-[10px] uppercase tracking-[0.2em] text-white/30 hover:text-danger transition-colors">[ RESET ]</button>
-             <button onClick={handleExportClick} className="text-[10px] uppercase tracking-[0.2em] text-white/30 hover:text-accent transition-colors">
+          <div className="grid grid-cols-2 md:flex md:justify-center gap-4 md:gap-6 mt-4 md:mt-8">
+             <button onClick={() => setShowSettings(!showSettings)} className="p-3 md:p-0 border border-white/10 md:border-none text-[10px] uppercase tracking-[0.2em] text-white/50 hover:text-white transition-colors">[ CONFIGURE ]</button>
+             <button onClick={handleSystemReset} className="p-3 md:p-0 border border-white/10 md:border-none text-[10px] uppercase tracking-[0.2em] text-white/50 hover:text-danger transition-colors">[ RESET ]</button>
+             <button onClick={handleExportClick} className="p-3 md:p-0 border border-white/10 md:border-none text-[10px] uppercase tracking-[0.2em] text-white/50 hover:text-accent transition-colors">
                {loadingAction === 'EXPORTING...' ? '[ PROCESSING... ]' : '[ EXPORT DATA ]'}
              </button>
-             <button onClick={() => fileInputRef.current?.click()} className="text-[10px] uppercase tracking-[0.2em] text-white/30 hover:text-accent transition-colors">
+             <button onClick={() => fileInputRef.current?.click()} className="p-3 md:p-0 border border-white/10 md:border-none text-[10px] uppercase tracking-[0.2em] text-white/50 hover:text-accent transition-colors">
                {loadingAction === 'ANALYZING...' ? '[ ANALYZING... ]' : '[ IMPORT DATA ]'}
              </button>
              <input type="file" ref={fileInputRef} onChange={handleImportFile} accept=".bndr" className="hidden" />

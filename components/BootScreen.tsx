@@ -37,14 +37,14 @@ export const BootScreen: React.FC = () => {
   }, []);
 
   return (
-    <div className="h-screen w-full flex items-center justify-center bg-transparent z-10 relative">
-      <div className="w-full max-w-3xl p-8 font-mono text-xl md:text-2xl leading-relaxed bg-black border-2 border-primary shadow-[0_0_20px_rgba(13,242,13,0.2)]">
+    <div className="h-screen w-full flex items-center justify-center bg-transparent z-10 relative p-4">
+      <div className="w-full max-w-3xl p-4 md:p-8 font-mono text-sm md:text-2xl leading-relaxed bg-black border-2 border-primary shadow-[0_0_20px_rgba(13,242,13,0.2)] overflow-hidden">
         {lines.map((line, i) => (
-          <div key={i} className={`mb-1 ${line.includes("SUBJECT") ? "text-white" : "text-primary"} text-glow`}>
+          <div key={i} className={`mb-1 break-words ${line.includes("SUBJECT") ? "text-white" : "text-primary"} text-glow`}>
             {line}
           </div>
         ))}
-        <div className="mt-4 inline-block w-4 h-6 bg-primary animate-blink"></div>
+        <div className="mt-4 inline-block w-3 h-5 md:w-4 md:h-6 bg-primary animate-blink"></div>
       </div>
     </div>
   );
