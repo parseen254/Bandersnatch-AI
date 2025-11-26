@@ -1,7 +1,7 @@
 export const MODELS = {
   TEXT_FAST: 'gemini-2.5-flash', 
-  CHAT_SMART: 'gemini-3-pro-preview',
-  IMAGE: 'gemini-3-pro-image-preview',
+  CHAT_SMART: 'gemini-flash-latest',
+  IMAGE: 'gemini-2.5-flash-image',
   TTS: 'gemini-2.5-flash-preview-tts',
 };
 
