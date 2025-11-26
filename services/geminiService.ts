@@ -388,24 +388,20 @@ export const getAssetUrl = async (id: string): Promise<string | null> => {
 export const generateSceneImage = async (model: string, prompt: string, size: '1K' | '2K' | '4K' = '1K'): Promise<{ url: string, assetId: string } | null> => {
   const ai = await getGeminiInstance();
   try {
+    const fullPrompt = prompt + " aesthetic of 1984, CRT monitor style, dark, glitchy, vhs tape artifacting.";
+    
     const response = await ai.models.generateContent({
       model: model,
-      contents: {
-        parts: [{ text: prompt + " aesthetic of 1984, CRT monitor style, dark, glitchy, vhs tape artifacting." }]
-      },
-      config: {
-        imageConfig: { imageSize: size, aspectRatio: "4:3" },
-        safetySettings: SAFETY_SETTINGS,
-      }
+      contents: fullPrompt,
     });
 
     for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) {
+      if (part.inlineData && part.inlineData.data && part.inlineData.mimeType) {
         const base64 = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
         const blob = await (await fetch(base64)).blob();
         const assetId = crypto.randomUUID();
         
-        // CRITICAL FIX: Save to storageService and retrieve cached URL to avoid memory leaks
+        // Save to storageService and retrieve cached URL to avoid memory leaks
         await storageService.saveAsset(assetId, blob, part.inlineData.mimeType);
         const cachedUrl = await storageService.getAssetUrl(assetId);
         
