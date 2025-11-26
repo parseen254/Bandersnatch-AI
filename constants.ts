@@ -1,8 +1,8 @@
 export const MODELS = {
-  TEXT_FAST: 'gemini-2.5-flash', 
-  CHAT_SMART: 'gemini-flash-latest',
-  IMAGE: 'gemini-2.5-flash-image',
-  TTS: 'gemini-2.5-flash-preview-tts',
+  TEXT_FAST: 'gemini-2.5-flash-lite', 
+  CHAT_SMART: 'gemini-2.5-flash',
+  IMAGE: 'gemini-2.5-flash-preview-image',
+  TTS: 'gemini-2.5-flash-tts',
 };
 
 export const DEFAULT_CONFIG = {
