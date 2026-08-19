@@ -2,7 +2,7 @@
 import React, { useState, useRef } from 'react';
 import { Button } from './Button';
 import { Input } from './Input';
-import { AppConfig, PsychProfile, StoryLine } from '../types';
+import { AppConfig, PsychProfile, StoryLine, UserSession } from '../types';
 import { getStoryLineData, downloadStoryLine, parseStoryLineFile, restoreStoryLine } from '../services/geminiService';
 
 interface BiosScreenProps {
@@ -11,8 +11,10 @@ interface BiosScreenProps {
   config: AppConfig;
   setConfig: (config: AppConfig) => void;
   psychProfile: PsychProfile | null;
+  user: UserSession | null;
   onInitialize: () => void;
   onResume: () => void;
+  onSignOut: () => void;
   handleSystemReset: () => void;
 }
 
@@ -27,8 +29,10 @@ export const BiosScreen: React.FC<BiosScreenProps> = ({
   config, 
   setConfig, 
   psychProfile,
+  user,
   onInitialize,
   onResume,
+  onSignOut,
   handleSystemReset
 }) => {
   const [showSettings, setShowSettings] = useState(false);
@@ -95,6 +99,29 @@ export const BiosScreen: React.FC<BiosScreenProps> = ({
       {/* Vignette to fade edges */}
       <div className="absolute inset-0 bg-[radial-gradient(circle,transparent_20%,#000000_95%)] pointer-events-none z-0"></div>
 
+      {/* Operator identity chip */}
+      {user && (
+        <div className="absolute top-4 right-4 z-30 flex items-center gap-3 border border-white/10 bg-black/80 backdrop-blur-sm px-3 py-2">
+          {user.picture ? (
+            <img src={user.picture} alt="" className="w-6 h-6 rounded-full border border-white/20" referrerPolicy="no-referrer" />
+          ) : (
+            <span className="w-6 h-6 rounded-full border border-white/20 flex items-center justify-center text-[10px] font-mono text-white/50">?</span>
+          )}
+          <div className="text-left">
+            <p className="text-white/80 font-mono text-[10px] tracking-widest uppercase leading-tight">{user.name}</p>
+            <p className="text-white/30 font-mono text-[9px] leading-tight">
+              {user.provider === 'google' ? user.email ?? 'GOOGLE ID' : 'GUEST ACCESS'}
+            </p>
+          </div>
+          <button
+            onClick={onSignOut}
+            className="ml-2 text-[9px] font-mono uppercase tracking-widest text-white/40 hover:text-danger transition-colors"
+          >
+            [ SIGN OUT ]
+          </button>
+        </div>
+      )}
+
       <div className="relative z-20 flex flex-col items-center pt-12 md:pt-24 mb-4 md:mb-8 px-4 text-center">
         <p className="text-white/30 font-mono text-[10px] md:text-xs tracking-[0.3em] uppercase mb-2">System v2.5 Ready</p>
         <h1 className="text-4xl sm:text-6xl md:text-8xl font-bold text-white tracking-tighter text-bandersnatch select-none break-all md:break-normal">
@@ -107,6 +134,11 @@ export const BiosScreen: React.FC<BiosScreenProps> = ({
           <div className="text-white/20 font-mono text-[10px] md:text-xs uppercase tracking-widest space-y-3 select-none hidden md:block">
             <p className="flex items-center gap-2"><span className="w-1 h-1 bg-white/20"></span> SYSTEM READY.</p>
             <p className="flex items-center gap-2"><span className="w-1 h-1 bg-white/20"></span> MEMORY LINKED.</p>
+            {user && (
+              <p className="flex items-center gap-2 text-accent/50">
+                <span className="w-1 h-1 bg-accent/50"></span> OPERATOR: {user.name.toUpperCase()}
+              </p>
+            )}
           </div>
         </div>
 

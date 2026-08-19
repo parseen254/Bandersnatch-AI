@@ -280,7 +280,7 @@ export const StoryScreen: React.FC<StoryScreenProps> = ({ config, psychProfile, 
        if (config.audioEnabled && !audioData && !isBacktrack) {
            audioData = await generateSpeech(config.ttsModel, newNode.narrative);
            if (audioData) {
-               const blob = new Blob([audioData], { type: 'audio/pcm' });
+               const blob = new Blob([audioData as BlobPart], { type: 'audio/pcm' });
                const assetId = crypto.randomUUID();
                await storageService.saveAsset(assetId, blob, 'audio/pcm');
                newNode.audioAssetId = assetId;
