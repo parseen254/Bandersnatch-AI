@@ -26,6 +26,13 @@ The app gates the experience behind a "Sign in with Google" screen using
 [Google Identity Services](https://developers.google.com/identity/gsi/web). It is a
 fully client-side OAuth flow — no backend required.
 
+**macOS quick start:** run `./scripts/setup-oauth.sh`. It installs/uses the gcloud CLI to
+sign in, pick or create a project, enable the Gemini API, mint a Gemini API key, and then
+opens the exact Console pages for the one step Google doesn't expose via CLI (creating the
+OAuth Web client) before writing your `.env.local`.
+
+Manual steps, if you prefer:
+
 1. Go to the [Google Cloud Console credentials page](https://console.cloud.google.com/apis/credentials).
 2. Create an **OAuth client ID** of type **Web application**.
 3. Add your origins (e.g. `http://localhost:5173` for dev, plus your production URL)
