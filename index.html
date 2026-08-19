@@ -5,6 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BANDERSNATCH</title>
     <script src="https://cdn.tailwindcss.com?plugins=forms,typography,aspect-ratio"></script>
+    <script>
+      // Palette used throughout the components (primary/accent/danger). Without this
+      // config the Tailwind CDN silently ignores those classes.
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              primary: '#0df20d',
+              accent: '#57e668',
+              danger: '#ff3b3b'
+            }
+          }
+        }
+      };
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@400;500;600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
@@ -46,6 +61,14 @@
       /* Text Styles */
       .font-mono {
         font-family: 'Share Tech Mono', monospace;
+      }
+
+      /* CRT phosphor glow (referenced across components, previously undefined) */
+      .text-glow {
+        text-shadow: 0 0 6px rgba(13, 242, 13, 0.6), 0 0 20px rgba(13, 242, 13, 0.25);
+      }
+      .text-glow-red {
+        text-shadow: 0 0 6px rgba(255, 59, 59, 0.6), 0 0 20px rgba(255, 59, 59, 0.25);
       }
       
       .font-display {
@@ -103,6 +126,8 @@
         background: #000;
         z-index: 0;
         perspective: 600px;
+        /* Decorative only — the 3D-rotated plane otherwise hit-tests above page content and blocks clicks */
+        pointer-events: none;
       }
       
       .retro-grid {

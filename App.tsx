@@ -1,10 +1,12 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { GameStage, PsychProfile, StoryNode, AppConfig } from './types';
+import { GameStage, PsychProfile, StoryNode, AppConfig, UserSession } from './types';
 import { DEFAULT_CONFIG } from './constants';
 import { initializeGemini, getStoredProfile, isProfileFresh, clearAllData } from './services/geminiService';
 import { storageService } from './services/storageService';
+import { getStoredSession, signOut } from './services/authService';
 import { Button } from './components/Button';
+import { AuthScreen } from './components/AuthScreen';
 import { BootScreen } from './components/BootScreen';
 import { BiosScreen } from './components/BiosScreen';
 import { PsychEvalScreen } from './components/PsychEvalScreen';
@@ -18,6 +20,7 @@ const App: React.FC = () => {
   const [apiKey, setApiKey] = useState<string>('');
   const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG);
   const [psychProfile, setPsychProfile] = useState<PsychProfile | null>(null);
+  const [user, setUser] = useState<UserSession | null>(null);
 
   const hasCheckedSession = useRef(false);
   
@@ -42,7 +45,12 @@ const App: React.FC = () => {
         if (isProfileFresh(storedProfile)) {
           setPsychProfile(storedProfile);
         }
-        
+
+        const storedSession = await getStoredSession();
+        if (storedSession) {
+          setUser(storedSession);
+        }
+
         setIsDbReady(true);
       } catch (e) {
         console.error("System Init Failed", e);
@@ -63,16 +71,27 @@ const App: React.FC = () => {
     }
   }, [apiKey, config, isDbReady]);
 
-  // 3. Boot Sequence
+  // 3. Boot Sequence — authenticated operators skip straight to BIOS
   useEffect(() => {
     if (isDbReady && stage === GameStage.BOOT && !hasCheckedSession.current) {
       hasCheckedSession.current = true;
       const timer = setTimeout(() => {
-        setStage(GameStage.BIOS);
+        setStage(user ? GameStage.BIOS : GameStage.AUTH);
       }, 4500);
       return () => clearTimeout(timer);
     }
-  }, [stage, isDbReady]);
+  }, [stage, isDbReady, user]);
+
+  const handleAuthenticated = (session: UserSession) => {
+    setUser(session);
+    setStage(GameStage.BIOS);
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
+    setUser(null);
+    setStage(GameStage.AUTH);
+  };
 
   const handleStartNewEval = () => {
     if (!apiKey) {
@@ -93,9 +112,11 @@ const App: React.FC = () => {
   };
 
   const handleSystemReset = async () => {
-    await clearAllData();
+    await clearAllData(); // Wipes the stored auth session too
+    await signOut();
     setApiKey('');
     setPsychProfile(null);
+    setUser(null);
     setConfig(DEFAULT_CONFIG);
     setStage(GameStage.BOOT);
     hasCheckedSession.current = false;
@@ -132,16 +153,20 @@ const App: React.FC = () => {
     switch (stage) {
       case GameStage.BOOT:
         return <BootScreen />;
+      case GameStage.AUTH:
+        return <AuthScreen onAuthenticated={handleAuthenticated} />;
       case GameStage.BIOS:
         return (
-          <BiosScreen 
-            apiKey={apiKey} 
-            setApiKey={setApiKey} 
-            config={config} 
-            setConfig={setConfig} 
+          <BiosScreen
+            apiKey={apiKey}
+            setApiKey={setApiKey}
+            config={config}
+            setConfig={setConfig}
             psychProfile={psychProfile}
+            user={user}
             onInitialize={handleStartNewEval}
             onResume={handleResumeSession}
+            onSignOut={handleSignOut}
             handleSystemReset={handleSystemReset}
           />
         );

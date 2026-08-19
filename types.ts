@@ -1,12 +1,23 @@
 
 export enum GameStage {
   BOOT = 'BOOT',
+  AUTH = 'AUTH',
   BIOS = 'BIOS',
   PSYCH_EVAL = 'PSYCH_EVAL',
   LOADING_SCENE = 'LOADING_SCENE',
   PLAYING = 'PLAYING',
   ENDING = 'ENDING',
   ERROR = 'ERROR',
+}
+
+export interface UserSession {
+  provider: 'google' | 'guest';
+  sub: string; // Stable unique subject identifier
+  name: string;
+  email: string | null;
+  picture: string | null;
+  issuedAt: number;
+  expiresAt: number;
 }
 
 export interface PsychProfile {
